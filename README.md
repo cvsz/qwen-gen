@@ -18,7 +18,26 @@ Production-oriented Qwen Code configuration generator and automated installer.
 
 ### Quick start — Qwen Coder (recommended)
 
-One-shot installer. Auto-detects backend, selects the best model for your hardware, pulls it, and writes `settings.json`.
+#### Option A: Install via pip / PyPI
+
+```bash
+pip install qwen-omega-prometa
+
+# Run anywhere
+qwen-omega install-coder
+```
+
+#### Option B: Standalone zero-install executable
+
+```bash
+# Download compressed single-file executable from latest release
+curl -fsSL https://github.com/cvsz/qwen-gen/releases/latest/download/qwen-omega -o qwen-omega
+chmod +x qwen-omega
+
+./qwen-omega install-coder
+```
+
+#### Option C: Shell script / source repo
 
 ```bash
 git clone https://github.com/cvsz/qwen-gen && cd qwen-gen
