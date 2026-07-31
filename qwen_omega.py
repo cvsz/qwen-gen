@@ -215,6 +215,16 @@ CODER_CATALOG: dict[str, list[str]] = {
         "Qwen/Qwen2.5-Coder-32B-Instruct",
         "Qwen/Qwen2.5-Coder-7B-Instruct",
     ],
+    "litellm": [
+        "qwen3-coder",
+        "qwen2.5-coder-32b-instruct",
+        "qwen2.5-coder-7b-instruct",
+    ],
+    "lmstudio": [
+        "qwen2.5-coder-7b-instruct",
+        "qwen2.5-coder-14b-instruct",
+        "qwen2.5-coder-32b-instruct",
+    ],
 }
 
 
@@ -775,10 +785,14 @@ def command_install_coder(args: argparse.Namespace) -> int:
             backend = "openrouter"
         elif os.environ.get("SILICONFLOW_API_KEY"):
             backend = "siliconflow"
+        elif os.environ.get("LITELLM_API_KEY"):
+            backend = "litellm"
+        elif os.environ.get("LMSTUDIO_API_KEY"):
+            backend = "lmstudio"
         else:
             die(
                 "Cannot auto-detect backend. "
-                "Set DASHSCOPE_API_KEY / OPENROUTER_API_KEY / SILICONFLOW_API_KEY, "
+                "Set DASHSCOPE_API_KEY / OPENROUTER_API_KEY / SILICONFLOW_API_KEY / LITELLM_API_KEY / LMSTUDIO_API_KEY, "
                 "or install Ollama, or pass --backend explicitly."
             )
 
@@ -820,6 +834,8 @@ def command_install_coder(args: argparse.Namespace) -> int:
     # ── Build generate args namespace ──────────────────────────────────────
     provider_map = {
         "ollama": "ollama",
+        "litellm": "litellm",
+        "lmstudio": "lmstudio",
         "dashscope": "dashscope",
         "openrouter": "openrouter",
         "siliconflow": "siliconflow",
@@ -841,7 +857,7 @@ def command_install_coder(args: argparse.Namespace) -> int:
         # Always include selected model first
         if model not in [m["id"] for m in model_items]:
             model_items.insert(0, {"id": model})
-    elif backend in ("dashscope", "siliconflow"):
+    elif backend in ("dashscope", "siliconflow", "litellm", "lmstudio"):
         # Use catalog; avoid live API call
         model_items = [{"id": m} for m in catalog]
     else:
@@ -1017,7 +1033,15 @@ def build_parser() -> argparse.ArgumentParser:
     ic.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     ic.add_argument(
         "--backend",
-        choices=("auto", "ollama", "dashscope", "openrouter", "siliconflow"),
+        choices=(
+            "auto",
+            "ollama",
+            "litellm",
+            "lmstudio",
+            "dashscope",
+            "openrouter",
+            "siliconflow",
+        ),
         default="auto",
         help="inference backend (default: auto-detect)",
     )

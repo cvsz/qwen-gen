@@ -283,6 +283,28 @@ case "$BACKEND" in
     )
     ;;
 
+  litellm)
+    [[ -z "$MODEL" ]] && MODEL="qwen3-coder"
+    OMEGA_ARGS+=(
+      generate
+      --provider litellm
+      --models "qwen3-coder,qwen2.5-coder-32b-instruct,qwen2.5-coder-7b-instruct"
+      --default-model "$MODEL"
+      --approval-mode "$APPROVAL_MODE"
+    )
+    ;;
+
+  lmstudio)
+    [[ -z "$MODEL" ]] && MODEL="qwen2.5-coder-7b-instruct"
+    OMEGA_ARGS+=(
+      generate
+      --provider lmstudio
+      --models "qwen2.5-coder-7b-instruct,qwen2.5-coder-14b-instruct,qwen2.5-coder-32b-instruct"
+      --default-model "$MODEL"
+      --approval-mode "$APPROVAL_MODE"
+    )
+    ;;
+
   custom)
     [[ -n "$CUSTOM_BASE_URL" ]] || die "--backend custom requires --base-url"
     [[ -z "$MODEL" ]] && die "--backend custom requires --model"
