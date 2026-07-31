@@ -142,6 +142,38 @@ class TestQwenOmega(unittest.TestCase):
         self.assertEqual(filtered[0]["id"], "qwen3-coder:latest")
         self.assertEqual(filtered[1]["id"], "deepseek-coder")
 
+    def test_dry_run_generate_without_api_key(self):
+        args = argparse.Namespace(
+            provider="ollama",
+            base_url=None,
+            env_key=None,
+            protocol=None,
+            models=None,
+            api_key=None,
+            allow_unauthenticated=False,
+            timeout=30,
+            insecure=False,
+            free=False,
+            filter_model=None,
+            include_regex=None,
+            exclude_regex=None,
+            coder_only=False,
+            min_context=None,
+            limit=None,
+            request_timeout_ms=120000,
+            max_retries=3,
+            context_window=None,
+            default_model="qwen3-coder:latest",
+            approval_mode="default",
+            max_session_turns=-1,
+            settings=str(self.tmp_path / "settings.json"),
+            dry_run=True,
+            no_backup=False,
+        )
+        with unittest.mock.patch("sys.stdout"):
+            res = qo.command_generate(args)
+            self.assertEqual(res, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
