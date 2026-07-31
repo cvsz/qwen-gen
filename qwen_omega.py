@@ -130,6 +130,12 @@ PRESETS: dict[str, ProviderPreset] = {
     "lmstudio": ProviderPreset(
         "LM Studio", "openai", "http://127.0.0.1:1234/v1", "LMSTUDIO_API_KEY"
     ),
+    "nextchat": ProviderPreset(
+        "NextChat", "openai", "http://127.0.0.1:3000/api/openai/v1", "NEXTCHAT_API_KEY"
+    ),
+    "open_webui": ProviderPreset(
+        "Open WebUI", "openai", "http://127.0.0.1:8080/v1", "OPEN_WEBUI_API_KEY"
+    ),
     "tgi": ProviderPreset(
         "Text Generation Inference", "openai", "http://127.0.0.1:8080/v1", "TGI_API_KEY"
     ),
@@ -224,6 +230,16 @@ CODER_CATALOG: dict[str, list[str]] = {
         "qwen2.5-coder-7b-instruct",
         "qwen2.5-coder-14b-instruct",
         "qwen2.5-coder-32b-instruct",
+    ],
+    "nextchat": [
+        "qwen3-coder",
+        "qwen2.5-coder-32b-instruct",
+        "qwen2.5-coder-7b-instruct",
+    ],
+    "open_webui": [
+        "qwen2.5-coder:7b-instruct-q4_K_M",
+        "qwen2.5-coder:32b-instruct-q4_K_M",
+        "qwen3-coder:latest",
     ],
 }
 
@@ -789,10 +805,14 @@ def command_install_coder(args: argparse.Namespace) -> int:
             backend = "litellm"
         elif os.environ.get("LMSTUDIO_API_KEY"):
             backend = "lmstudio"
+        elif os.environ.get("NEXTCHAT_API_KEY"):
+            backend = "nextchat"
+        elif os.environ.get("OPEN_WEBUI_API_KEY"):
+            backend = "open_webui"
         else:
             die(
                 "Cannot auto-detect backend. "
-                "Set DASHSCOPE_API_KEY / OPENROUTER_API_KEY / SILICONFLOW_API_KEY / LITELLM_API_KEY / LMSTUDIO_API_KEY, "
+                "Set DASHSCOPE_API_KEY / OPENROUTER_API_KEY / SILICONFLOW_API_KEY / LITELLM_API_KEY / LMSTUDIO_API_KEY / NEXTCHAT_API_KEY / OPEN_WEBUI_API_KEY, "
                 "or install Ollama, or pass --backend explicitly."
             )
 
@@ -836,6 +856,8 @@ def command_install_coder(args: argparse.Namespace) -> int:
         "ollama": "ollama",
         "litellm": "litellm",
         "lmstudio": "lmstudio",
+        "nextchat": "nextchat",
+        "open_webui": "open_webui",
         "dashscope": "dashscope",
         "openrouter": "openrouter",
         "siliconflow": "siliconflow",
@@ -857,7 +879,14 @@ def command_install_coder(args: argparse.Namespace) -> int:
         # Always include selected model first
         if model not in [m["id"] for m in model_items]:
             model_items.insert(0, {"id": model})
-    elif backend in ("dashscope", "siliconflow", "litellm", "lmstudio"):
+    elif backend in (
+        "dashscope",
+        "siliconflow",
+        "litellm",
+        "lmstudio",
+        "nextchat",
+        "open_webui",
+    ):
         # Use catalog; avoid live API call
         model_items = [{"id": m} for m in catalog]
     else:
@@ -1038,6 +1067,8 @@ def build_parser() -> argparse.ArgumentParser:
             "ollama",
             "litellm",
             "lmstudio",
+            "nextchat",
+            "open_webui",
             "dashscope",
             "openrouter",
             "siliconflow",

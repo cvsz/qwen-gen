@@ -305,6 +305,28 @@ case "$BACKEND" in
     )
     ;;
 
+  nextchat)
+    [[ -z "$MODEL" ]] && MODEL="qwen3-coder"
+    OMEGA_ARGS+=(
+      generate
+      --provider nextchat
+      --models "qwen3-coder,qwen2.5-coder-32b-instruct,qwen2.5-coder-7b-instruct"
+      --default-model "$MODEL"
+      --approval-mode "$APPROVAL_MODE"
+    )
+    ;;
+
+  open_webui)
+    [[ -z "$MODEL" ]] && MODEL="qwen2.5-coder:7b-instruct-q4_K_M"
+    OMEGA_ARGS+=(
+      generate
+      --provider open_webui
+      --models "qwen2.5-coder:7b-instruct-q4_K_M,qwen2.5-coder:32b-instruct-q4_K_M,qwen3-coder:latest"
+      --default-model "$MODEL"
+      --approval-mode "$APPROVAL_MODE"
+    )
+    ;;
+
   custom)
     [[ -n "$CUSTOM_BASE_URL" ]] || die "--backend custom requires --base-url"
     [[ -z "$MODEL" ]] && die "--backend custom requires --model"
