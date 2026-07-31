@@ -1,0 +1,75 @@
+name: Scheduled Auto-Update & Maintenance
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      auto_create_pr:
+        description: "Automatically create Pull Request if updates/repairs are needed"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-update-check:
+    name: Check & Auto-Update Model Presets & Settings
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
+
+      - name: Install dependencies & linters
+        run: |
+          pip install build pytest ruff
+
+      - name: Verify existing configuration & run doctor
+        run: |
+          python3 qwen_omega.py doctor --settings example-settings.json
+
+      - name: Test preset discovery & model updates (dry-run)
+        run: |
+          python3 qwen_omega.py generate --provider openrouter --free --dry-run
+          python3 qwen_omega.py generate --provider dashscope --dry-run
+
+      - name: Run unit test suite
+        run: |
+          python3 -m pytest test_qwen_omega.py -v --tb=short
+
+      - name: Build package artifacts to verify build integrity
+        run: |
+          python3 -m build --wheel --sdist
+          python3 -m zipapp qwen_omega.py --output dist/qwen-omega --python '/usr/bin/env python3' --compress
+
+      - name: Check for uncommitted changes or fixes
+        id: status
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request for updates
+        if: steps.status.outputs.changes == 'true' && (github.event.inputs.auto_create_pr == 'true' || github.event_name == 'schedule')
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(auto-update): scheduled preset & config maintenance update"
+          branch: "auto-update/scheduled-maintenance"
+          title: "chore(auto-update): scheduled preset & config maintenance update"
+          body: |
+            Automated scheduled maintenance run triggered by GitHub Actions (`.github/workflows/auto-update.yml`).
+            - Verified provider presets
+            - Validated schema compliance ($version: 4)
+            - Re-built and validated distribution artifacts
+          labels: "auto-update, maintenance"
