@@ -25,7 +25,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Iterable, NoReturn
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 DEFAULT_TIMEOUT = 30
 DEFAULT_SETTINGS = pathlib.Path.home() / ".qwen" / "settings.json"
 DEFAULT_ENV = pathlib.Path.home() / ".qwen" / ".env"
