@@ -20,15 +20,24 @@ class TestQwenOmega(unittest.TestCase):
         self.tmp_dir.cleanup()
 
     def test_normalize_url(self):
-        self.assertEqual(qo.normalize_url("https://api.openai.com/v1/"), "https://api.openai.com/v1")
-        self.assertEqual(qo.normalize_url("http://localhost:11434"), "http://localhost:11434")
+        self.assertEqual(
+            qo.normalize_url("https://api.openai.com/v1/"), "https://api.openai.com/v1"
+        )
+        self.assertEqual(
+            qo.normalize_url("http://localhost:11434"), "http://localhost:11434"
+        )
         with unittest.mock.patch("sys.stderr"):
             with self.assertRaises(SystemExit):
                 qo.normalize_url("ftp://example.com")
 
     def test_models_url(self):
-        self.assertEqual(qo.models_url("https://api.openai.com/v1"), "https://api.openai.com/v1/models")
-        self.assertEqual(qo.models_url("https://api.openai.com"), "https://api.openai.com/v1/models")
+        self.assertEqual(
+            qo.models_url("https://api.openai.com/v1"),
+            "https://api.openai.com/v1/models",
+        )
+        self.assertEqual(
+            qo.models_url("https://api.openai.com"), "https://api.openai.com/v1/models"
+        )
 
     def test_extract_model_objects(self):
         payload = {"data": [{"id": "model-1"}, {"name": "model-2"}, "model-3"]}
@@ -41,17 +50,30 @@ class TestQwenOmega(unittest.TestCase):
     def test_explicitly_free(self):
         self.assertTrue(qo.explicitly_free({"id": "openrouter/free"}))
         self.assertTrue(qo.explicitly_free({"id": "foo:free"}))
-        self.assertTrue(qo.explicitly_free({"id": "foo", "pricing": {"prompt": "0", "completion": 0}}))
-        self.assertFalse(qo.explicitly_free({"id": "foo", "pricing": {"prompt": "0.001", "completion": "0"}}))
+        self.assertTrue(
+            qo.explicitly_free(
+                {"id": "foo", "pricing": {"prompt": "0", "completion": 0}}
+            )
+        )
+        self.assertFalse(
+            qo.explicitly_free(
+                {"id": "foo", "pricing": {"prompt": "0.001", "completion": "0"}}
+            )
+        )
 
     def test_validate_settings(self):
         valid = {
             "$version": 4,
             "modelProviders": {
                 "openai": [
-                    {"id": "m1", "name": "m1", "baseUrl": "http://localhost", "envKey": "API_KEY"}
+                    {
+                        "id": "m1",
+                        "name": "m1",
+                        "baseUrl": "http://localhost",
+                        "envKey": "API_KEY",
+                    }
                 ]
-            }
+            },
         }
         self.assertEqual(qo.validate_settings(valid), [])
 
@@ -63,9 +85,9 @@ class TestQwenOmega(unittest.TestCase):
             "modelProviders": {
                 "openai": [
                     {"id": "m1", "envKey": "KEY1"},
-                    {"id": "m1", "envKey": "KEY2"}
+                    {"id": "m1", "envKey": "KEY2"},
                 ]
-            }
+            },
         }
         errors = qo.validate_settings(duplicate_model)
         self.assertTrue(any("duplicate model id" in e for e in errors))
@@ -76,14 +98,17 @@ class TestQwenOmega(unittest.TestCase):
                 "p1": [{"id": "m1"}],
                 "p2": {"models": [{"id": "m2"}]},
                 "p3": '"m3", "m4"',
-                "p4": 12345
+                "p4": 12345,
             }
         }
         repairs = qo.normalize_existing_providers(settings)
         self.assertEqual(len(repairs), 3)
         self.assertEqual(settings["modelProviders"]["p1"], [{"id": "m1"}])
         self.assertEqual(settings["modelProviders"]["p2"], [{"id": "m2"}])
-        self.assertEqual(settings["modelProviders"]["p3"], [{"id": "m3", "name": "m3"}, {"id": "m4", "name": "m4"}])
+        self.assertEqual(
+            settings["modelProviders"]["p3"],
+            [{"id": "m3", "name": "m3"}, {"id": "m4", "name": "m4"}],
+        )
         self.assertEqual(settings["modelProviders"]["p4"], [])
 
     def test_choose_default_model(self):
@@ -94,11 +119,23 @@ class TestQwenOmega(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 qo.choose_default_model(configs, "non-existent")
 
-
     def test_filter_model(self):
-        items = [{"id": "qwen3-coder:latest"}, {"id": "gpt-4o"}, {"id": "deepseek-coder"}]
-        pattern = argparse.Namespace(filter_model="coder", include_regex=None, exclude_regex=None, free=False, coder_only=False, min_context=None, limit=None)
+        items = [
+            {"id": "qwen3-coder:latest"},
+            {"id": "gpt-4o"},
+            {"id": "deepseek-coder"},
+        ]
+        pattern = argparse.Namespace(
+            filter_model="coder",
+            include_regex=None,
+            exclude_regex=None,
+            free=False,
+            coder_only=False,
+            min_context=None,
+            limit=None,
+        )
         import re
+
         pat = re.compile(pattern.filter_model, re.IGNORECASE)
         filtered = [x for x in items if pat.search(x["id"])]
         self.assertEqual(len(filtered), 2)

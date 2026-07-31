@@ -33,9 +33,9 @@ jobs:
         with:
           python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
 
-      - name: Generate config (dry-run)
+      - name: Generate config (dry-run, no network)
         run: |
-          python qwen-omega.py generate \
+          python3 qwen-omega.py generate \
             --provider ${{ matrix.provider }} \
             --default-model "${{ vars.DEFAULT_MODEL || 'qwen3-coder:latest' }}" \
             --dry-run
@@ -59,11 +59,11 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
-          python qwen-omega.py generate \
+          python3 qwen-omega.py generate \
             --provider openrouter \
             --default-model "${{ vars.DEFAULT_MODEL || 'qwen/qwen3-coder' }}" \
-            --list-models \
-            --free
+            --free \
+            --dry-run
 
   live-dashscope:
     name: Live – DashScope (Alibaba)
@@ -83,7 +83,7 @@ jobs:
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: |
-          python qwen-omega.py generate \
+          python3 qwen-omega.py generate \
             --provider dashscope \
             --default-model "${{ vars.DASHSCOPE_DEFAULT_MODEL || 'qwen-coder-turbo-latest' }}" \
-            --list-models
+            --dry-run

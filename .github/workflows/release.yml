@@ -29,7 +29,7 @@ jobs:
         run: pip install build pytest
 
       - name: Run tests
-        run: python -m pytest test_qwen_omega.py -v --tb=short
+        run: python3 -m pytest test_qwen_omega.py -v --tb=short
 
       - name: Extract version from tag
         id: version
@@ -37,17 +37,17 @@ jobs:
 
       - name: Verify version matches source
         run: |
-          SOURCE_VER=$(python -c "import qwen_omega; print(qwen_omega.VERSION)")
+          SOURCE_VER=$(python3 -c "import qwen_omega; print(qwen_omega.VERSION)")
           TAG_VER="${{ steps.version.outputs.VERSION }}"
           echo "Source: $SOURCE_VER  Tag: $TAG_VER"
           [ "$SOURCE_VER" = "$TAG_VER" ] || (echo "ERROR: version mismatch" && exit 1)
 
       - name: Build wheel and sdist
-        run: python -m build --wheel --sdist
+        run: python3 -m build --wheel --sdist
 
       - name: Build standalone zipapp
         run: |
-          python -m zipapp qwen_omega.py \
+          python3 -m zipapp qwen_omega.py \
             --output dist/qwen-omega \
             --python '/usr/bin/env python3' \
             --compress

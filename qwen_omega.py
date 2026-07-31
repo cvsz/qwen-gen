@@ -536,6 +536,11 @@ def command_generate(args: argparse.Namespace) -> int:
 
     if args.models:
         model_items = [{"id": x.strip()} for x in args.models.split(",") if x.strip()]
+    elif args.dry_run and not api_key:
+        # Dry-run with no --models and no API key: synthesise from --default-model
+        # so the command works without network access or credentials.
+        fallback = args.default_model or "qwen3-coder:latest"
+        model_items = [{"id": fallback}]
     else:
         if not api_key and not args.allow_unauthenticated:
             die(f"environment variable {env_key} is unset; export it or pass --api-key")

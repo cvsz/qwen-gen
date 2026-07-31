@@ -30,7 +30,7 @@ jobs:
         run: pip install pytest
 
       - name: Run unit tests
-        run: python -m pytest test_qwen_omega.py -v --tb=short
+        run: python3 -m pytest test_qwen_omega.py -v --tb=short
 
   lint:
     name: Lint
@@ -47,10 +47,10 @@ jobs:
         run: pip install ruff
 
       - name: ruff check
-        run: ruff check qwen-omega.py install-qwen-coder.sh --select E,W,F,I || true
+        run: ruff check qwen_omega.py install-qwen-coder.sh --select E,W,F,I || true
 
       - name: ruff format check
-        run: ruff format --check qwen-omega.py
+        run: ruff format --check qwen_omega.py qwen-omega.py test_qwen_omega.py
 
   shellcheck:
     name: Shell lint
@@ -77,14 +77,14 @@ jobs:
           python-version: "3.12"
 
       - name: qwen-omega --version
-        run: python qwen-omega.py --version
+        run: python3 qwen-omega.py --version
 
       - name: providers list
-        run: python qwen-omega.py providers
+        run: python3 qwen-omega.py providers
 
       - name: generate dry-run (ollama, no network)
         run: |
-          python qwen-omega.py generate \
+          python3 qwen-omega.py generate \
             --provider ollama \
             --models 'qwen2.5-coder:7b-instruct-q4_K_M,qwen3-coder:latest' \
             --default-model 'qwen2.5-coder:7b-instruct-q4_K_M' \
@@ -92,7 +92,7 @@ jobs:
 
       - name: install-coder dry-run (ollama)
         run: |
-          python qwen-omega.py install-coder \
+          python3 qwen-omega.py install-coder \
             --backend ollama \
             --model 'qwen2.5-coder:7b-instruct-q4_K_M' \
             --dry-run
