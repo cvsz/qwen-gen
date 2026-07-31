@@ -61,7 +61,6 @@ jobs:
         run: |
           python3 qwen-omega.py generate \
             --provider openrouter \
-            --default-model "${{ vars.DEFAULT_MODEL || 'qwen/qwen3-coder' }}" \
             --free \
             --dry-run
 
@@ -85,5 +84,4 @@ jobs:
         run: |
           python3 qwen-omega.py generate \
             --provider dashscope \
-            --default-model "${{ vars.DASHSCOPE_DEFAULT_MODEL || 'qwen-coder-turbo-latest' }}" \
             --dry-run

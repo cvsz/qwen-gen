@@ -550,8 +550,8 @@ def command_generate(args: argparse.Namespace) -> int:
     preset = PRESETS.get(args.provider) if args.provider else None
     base_url = (
         args.base_url
-        or os.environ.get("OPENAI_BASE_URL")
         or (preset.base_url if preset else None)
+        or os.environ.get("OPENAI_BASE_URL")
     )
     env_key = args.env_key or (preset.env_key if preset else "OPENAI_API_KEY")
     protocol = args.protocol or (preset.protocol if preset else "openai")
