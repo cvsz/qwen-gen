@@ -1,0 +1,48 @@
+{
+  "modelProviders": {
+    "openai": [
+      {
+        "id": "deepseek-coder:latest",
+        "name": "deepseek coder:latest",
+        "baseUrl": "http://127.0.0.1:11434/v1",
+        "envKey": "OLLAMA_API_KEY",
+        "generationConfig": {
+          "timeout": 120000,
+          "maxRetries": 3
+        }
+      },
+      {
+        "id": "qwen3-coder:latest",
+        "name": "qwen3 coder:latest",
+        "baseUrl": "http://127.0.0.1:11434/v1",
+        "envKey": "OLLAMA_API_KEY",
+        "generationConfig": {
+          "timeout": 120000,
+          "maxRetries": 3
+        }
+      }
+    ]
+  },
+  "$version": 4,
+  "general": {
+    "enableAutoUpdate": true
+  },
+  "ui": {
+    "showMemoryUsage": true
+  },
+  "privacy": {
+    "usageStatisticsEnabled": false
+  },
+  "tools": {
+    "approvalMode": "default"
+  },
+  "security": {
+    "auth": {
+      "selectedType": "openai"
+    }
+  },
+  "model": {
+    "name": "qwen3-coder:latest",
+    "maxSessionTurns": -1
+  }
+}
