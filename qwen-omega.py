@@ -24,7 +24,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 DEFAULT_TIMEOUT = 30
 DEFAULT_SETTINGS = pathlib.Path.home() / ".qwen" / "settings.json"
 DEFAULT_ENV = pathlib.Path.home() / ".qwen" / ".env"
@@ -78,6 +78,33 @@ PRESETS: dict[str, ProviderPreset] = {
     "minimax": ProviderPreset("MiniMax", "openai", "https://api.minimax.chat/v1", "MINIMAX_API_KEY"),
     "stepfun": ProviderPreset("StepFun (阶跃星辰)", "openai", "https://api.stepfun.com/v1", "STEPFUN_API_KEY"),
     "hunyuan": ProviderPreset("Tencent Hunyuan", "openai", "https://api.hunyuan.tencentyun.com/v1", "HUNYUAN_API_KEY"),
+}
+
+# ── Qwen Coder model catalog (backend → ordered list of recommended model IDs) ──
+CODER_CATALOG: dict[str, list[str]] = {
+    "ollama": [
+        "qwen2.5-coder:32b-instruct-q4_K_M",
+        "qwen2.5-coder:14b-instruct-q4_K_M",
+        "qwen2.5-coder:7b-instruct-q4_K_M",
+        "qwen2.5-coder:3b-instruct-q4_K_M",
+        "qwen2.5-coder:1.5b-instruct-q4_K_M",
+        "qwen3-coder:latest",
+    ],
+    "dashscope": [
+        "qwen-coder-plus",
+        "qwen-coder-turbo",
+        "qwen2.5-coder-32b-instruct",
+        "qwen2.5-coder-14b-instruct",
+        "qwen2.5-coder-7b-instruct",
+    ],
+    "openrouter": [
+        "qwen/qwen3-coder:free",
+        "qwen/qwen-2.5-coder-32b-instruct:free",
+    ],
+    "siliconflow": [
+        "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "Qwen/Qwen2.5-Coder-7B-Instruct",
+    ],
 }
 
 
@@ -524,6 +551,183 @@ def command_doctor(args: argparse.Namespace) -> int:
     return 1
 
 
+def _detect_ram_gb() -> int:
+    """Return total system RAM in GB, or 0 if unavailable."""
+    try:
+        mem = pathlib.Path("/proc/meminfo")
+        if mem.exists():
+            for line in mem.read_text().splitlines():
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])
+                    return kb // (1024 * 1024)
+    except Exception:
+        pass
+    return 0
+
+
+def command_install_coder(args: argparse.Namespace) -> int:
+    """High-level Qwen Coder install: choose backend, model, generate settings."""
+    import shlex
+
+    backend: str = args.backend
+    model: str = args.model or ""
+    approval_mode: str = args.approval_mode
+    dry_run: bool = args.dry_run
+    free_only: bool = args.free
+
+    # ── Auto-detect backend ────────────────────────────────────────────────
+    if backend == "auto":
+        if shutil.which("ollama"):
+            backend = "ollama"
+        elif os.environ.get("DASHSCOPE_API_KEY"):
+            backend = "dashscope"
+        elif os.environ.get("OPENROUTER_API_KEY"):
+            backend = "openrouter"
+        elif os.environ.get("SILICONFLOW_API_KEY"):
+            backend = "siliconflow"
+        else:
+            die(
+                "Cannot auto-detect backend. "
+                "Set DASHSCOPE_API_KEY / OPENROUTER_API_KEY / SILICONFLOW_API_KEY, "
+                "or install Ollama, or pass --backend explicitly."
+            )
+
+    print(f"Qwen Omega ProMeta {VERSION} — Qwen Coder Installer")
+    print(f"Backend : {backend}")
+
+    # ── Select model ───────────────────────────────────────────────────────
+    catalog = CODER_CATALOG.get(backend, [])
+    if not model:
+        if backend == "ollama":
+            ram_gb = _detect_ram_gb()
+            if   ram_gb >= 40: model = catalog[0]   # 32b
+            elif ram_gb >= 20: model = catalog[1]   # 14b
+            elif ram_gb >= 10: model = catalog[2]   # 7b
+            elif ram_gb >=  5: model = catalog[3]   # 3b
+            else:               model = catalog[4]  # 1.5b
+            print(f"RAM     : {ram_gb}GB → {model}")
+        elif catalog:
+            model = catalog[0]
+        else:
+            die(f"No default model catalog for backend '{backend}'. Pass --model.")
+
+    print(f"Model   : {model}")
+
+    # ── Validate API key availability ──────────────────────────────────────
+    key_map = {
+        "dashscope":   "DASHSCOPE_API_KEY",
+        "openrouter":  "OPENROUTER_API_KEY",
+        "siliconflow": "SILICONFLOW_API_KEY",
+    }
+    if backend in key_map and not os.environ.get(key_map[backend]):
+        die(f"{key_map[backend]} is not set")
+
+    # ── Build generate args namespace ──────────────────────────────────────
+    provider_map = {
+        "ollama":      "ollama",
+        "dashscope":   "dashscope",
+        "openrouter":  "openrouter",
+        "siliconflow": "siliconflow",
+    }
+    provider = provider_map.get(backend)
+    if provider is None:
+        die(f"Unsupported backend: {backend}")
+
+    preset = PRESETS[provider]
+    base_url = preset.base_url
+    env_key  = preset.env_key
+    api_key  = os.environ.get(env_key, "")
+
+    # For Ollama, skip live discovery — use catalog directly
+    if backend == "ollama":
+        model_items: list[dict[str, Any]] = [{"id": m} for m in (catalog if not model else [model])]
+        # Always include selected model first
+        if model not in [m["id"] for m in model_items]:
+            model_items.insert(0, {"id": model})
+    elif backend in ("dashscope", "siliconflow"):
+        # Use catalog; avoid live API call
+        model_items = [{"id": m} for m in catalog]
+    else:
+        # openrouter: discover live, then filter to coder + optional :free
+        if not api_key:
+            # Fall back to known-free catalog
+            model_items = [{"id": m} for m in catalog]
+        else:
+            payload = request_json(
+                models_url(base_url), api_key,
+                DEFAULT_TIMEOUT, insecure=False,
+            )
+            model_items = extract_model_objects(payload)
+            coder_pat = re.compile(r"code|coder", re.IGNORECASE)
+            model_items = [it for it in model_items if coder_pat.search(str(it.get("id", "")))]
+            if free_only:
+                model_items = [it for it in model_items if explicitly_free(it)] or [
+                    {"id": m} for m in catalog
+                ]
+
+    if not model_items:
+        die("No models available after filtering")
+
+    settings_path = pathlib.Path(args.settings).expanduser()
+    configs = to_model_configs(
+        model_items, base_url, env_key,
+        120_000, 3, None,
+    )
+    default_model = choose_default_model(configs, model)
+
+    settings = load_json(settings_path)
+    repairs = normalize_existing_providers(settings)
+    settings["$version"] = 4
+    settings.setdefault("general", {})
+    settings.setdefault("ui", {})
+    settings.setdefault("privacy", {})
+    settings.setdefault("tools", {})
+    settings.setdefault("security", {})
+    settings.setdefault("model", {})
+    settings["general"].setdefault("enableAutoUpdate", True)
+    settings["ui"].setdefault("showMemoryUsage", True)
+    settings["privacy"].setdefault("usageStatisticsEnabled", False)
+    settings["tools"]["approvalMode"] = approval_mode
+    settings["security"].setdefault("auth", {})
+    settings["security"]["auth"]["selectedType"] = preset.protocol
+    settings["model"]["name"] = default_model
+    settings["model"]["maxSessionTurns"] = -1
+    settings["modelProviders"][preset.protocol] = configs
+
+    errors = validate_settings(settings)
+    if errors:
+        die("Generated configuration failed validation:\n- " + "\n- ".join(errors))
+
+    if dry_run:
+        json.dump(settings, sys.stdout, indent=2, ensure_ascii=False)
+        print()
+        return 0
+
+    saved_backup = backup(settings_path)
+    atomic_write_json(settings_path, settings)
+
+    print(f"Settings : {settings_path}")
+    print(f"Models   : {len(configs)}")
+    print(f"Default  : {default_model}")
+    print(f"Env key  : {env_key}")
+    if saved_backup:
+        print(f"Backup   : {saved_backup}")
+    for repair in repairs:
+        print(f"Repaired : {repair}")
+
+    # ── Ollama pull ────────────────────────────────────────────────────────
+    if backend == "ollama" and shutil.which("ollama"):
+        print(f"Pulling  : {model}")
+        try:
+            subprocess.run(["ollama", "pull", model], check=True)
+            print(f"Ready    : {model}")
+        except subprocess.CalledProcessError:
+            eprint(f"WARNING: ollama pull {model} failed. Run manually: ollama pull {model}")
+
+    print("Done. Run: qwen")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="qwen-omega", description="Generate and validate production-grade Qwen Code configuration")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
@@ -573,6 +777,28 @@ def build_parser() -> argparse.ArgumentParser:
     prov = sub.add_parser("providers", help="list supported provider URLs, names, and environment keys")
     prov.add_argument("--query", "-q", help="search filter for provider key/name/URL")
     prov.set_defaults(func=command_providers)
+
+    ic = sub.add_parser(
+        "install-coder",
+        help="one-shot Qwen Coder setup: detect backend, select model, generate settings",
+    )
+    ic.add_argument("--settings", default=str(DEFAULT_SETTINGS))
+    ic.add_argument(
+        "--backend",
+        choices=("auto", "ollama", "dashscope", "openrouter", "siliconflow"),
+        default="auto",
+        help="inference backend (default: auto-detect)",
+    )
+    ic.add_argument("--model", default="", help="override auto-selected model")
+    ic.add_argument("--free", action="store_true", help="restrict to zero-cost models")
+    ic.add_argument(
+        "--approval-mode",
+        choices=("plan", "default", "auto-edit", "auto", "yolo"),
+        default="default",
+    )
+    ic.add_argument("--dry-run", action="store_true")
+    ic.set_defaults(func=command_install_coder)
+
     return parser
 
 
