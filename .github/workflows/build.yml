@@ -1,0 +1,62 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build wheel and sdist
+        run: python -m build --wheel --sdist
+
+      - name: Build standalone zipapp
+        run: |
+          python -m zipapp qwen_omega.py \
+            --output dist/qwen-omega \
+            --python '/usr/bin/env python3' \
+            --compress
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Verify wheel installs and runs
+        run: |
+          pip install dist/*.whl
+          qwen-omega --version
+          qwen-omega providers --query ollama
+
+      - name: Verify standalone zipapp runs
+        run: |
+          python3 dist/qwen-omega --version
+          python3 dist/qwen-omega providers
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.sha }}
+          path: dist/
+          retention-days: 30

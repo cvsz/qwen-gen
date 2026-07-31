@@ -1,0 +1,53 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target"
+        required: true
+        default: "testpypi"
+        type: choice
+        options: [testpypi, pypi]
+
+permissions:
+  contents: read
+  id-token: write   # required for OIDC trusted publishing
+
+jobs:
+  publish:
+    name: Publish (${{ github.event.inputs.target || 'pypi' }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.target == 'testpypi' && 'staging' || 'production' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
+
+      - name: Install build + test tools
+        run: pip install build pytest
+
+      - name: Run tests
+        run: python -m pytest test_qwen_omega.py -v --tb=short
+
+      - name: Build wheel and sdist
+        run: python -m build --wheel --sdist
+
+      - name: Publish to TestPyPI
+        if: ${{ github.event.inputs.target == 'testpypi' || false }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          print-hash: true
+
+      - name: Publish to PyPI
+        if: ${{ github.event.inputs.target != 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true

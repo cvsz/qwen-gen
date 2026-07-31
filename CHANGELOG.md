@@ -11,6 +11,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] — 2026-07-31
+
+### Added
+
+- **Python package (`pyproject.toml`)** — `qwen-omega-prometa` now pip-installable
+  - `pip install qwen-omega-prometa` installs `qwen-omega` console script globally
+  - Pure stdlib, zero runtime dependencies
+  - Fully typed classifiers, SPDX license expression, PEP 621 compliant
+- **`qwen_omega.py`** — canonical module (underscore name, importable as `import qwen_omega`)
+- **`qwen-omega.py`** — backward-compatible shim (existing scripts unchanged)
+- **Standalone zipapp** (`dist/qwen-omega`) — single executable file, runs without install
+- **`build.yml`** GitHub Actions workflow — builds wheel + sdist + zipapp on every push/PR
+- **`publish.yml`** GitHub Actions workflow — publishes to PyPI via OIDC trusted publishing
+- **Release pipeline** — 3-job chain: build → GitHub Release → PyPI publish
+  - All artifacts attached to every release: `.whl`, `.tar.gz` (sdist), zipapp, legacy archive, `SHA256SUMS`
+- **`build-check` job in `ci.yml`** — catches build regressions on every PR
+
+### Changed
+
+- `release.yml` rewritten into `build → release → publish` job chain
+- `test_qwen_omega.py` updated to import `qwen_omega` module directly (no more `importlib` path hack)
+
+---
+
 ## [1.1.0] — 2026-07-31
 
 ### Added
@@ -66,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`example-settings.json`** — reference settings.json output
 - **`README.md`** — project documentation
 
-[Unreleased]: https://github.com/cvsz/qwen-gen/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/cvsz/qwen-gen/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/cvsz/qwen-gen/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/cvsz/qwen-gen/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/cvsz/qwen-gen/releases/tag/v1.0.0

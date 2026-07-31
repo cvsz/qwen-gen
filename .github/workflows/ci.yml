@@ -96,3 +96,34 @@ jobs:
             --backend ollama \
             --model 'qwen2.5-coder:7b-instruct-q4_K_M' \
             --dry-run
+
+  build-check:
+    name: Package build check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
+
+      - name: Install build tools
+        run: pip install build
+
+      - name: Build wheel and sdist
+        run: python -m build --wheel --sdist
+
+      - name: Build standalone zipapp
+        run: |
+          python -m zipapp qwen_omega.py \
+            --output dist/qwen-omega \
+            --python '/usr/bin/env python3' \
+            --compress
+
+      - name: Verify wheel installs and CLI works
+        run: |
+          pip install dist/*.whl
+          qwen-omega --version
+          qwen-omega providers --query openrouter
+

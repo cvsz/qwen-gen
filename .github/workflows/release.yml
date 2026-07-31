@@ -7,12 +7,13 @@ on:
 
 permissions:
   contents: write
+  id-token: write   # for OIDC attestations
 
 jobs:
-  release:
-    name: Create GitHub Release
+  # ── 1. Build all packages ─────────────────────────────────────────────────
+  build:
+    name: Build packages
     runs-on: ubuntu-latest
-    environment: production
 
     steps:
       - uses: actions/checkout@v4
@@ -24,10 +25,10 @@ jobs:
         with:
           python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
 
-      - name: Install test dependencies
-        run: pip install pytest
+      - name: Install build + test tools
+        run: pip install build pytest
 
-      - name: Run tests before releasing
+      - name: Run tests
         run: python -m pytest test_qwen_omega.py -v --tb=short
 
       - name: Extract version from tag
@@ -36,29 +37,76 @@ jobs:
 
       - name: Verify version matches source
         run: |
-          SOURCE_VER=$(python -c "import importlib.util, pathlib; spec=importlib.util.spec_from_file_location('qo','qwen-omega.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); print(m.VERSION)")
+          SOURCE_VER=$(python -c "import qwen_omega; print(qwen_omega.VERSION)")
           TAG_VER="${{ steps.version.outputs.VERSION }}"
           echo "Source: $SOURCE_VER  Tag: $TAG_VER"
           [ "$SOURCE_VER" = "$TAG_VER" ] || (echo "ERROR: version mismatch" && exit 1)
 
-      - name: Build release archive
+      - name: Build wheel and sdist
+        run: python -m build --wheel --sdist
+
+      - name: Build standalone zipapp
+        run: |
+          python -m zipapp qwen_omega.py \
+            --output dist/qwen-omega \
+            --python '/usr/bin/env python3' \
+            --compress
+
+      - name: Build legacy source archive
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           ARCHIVE="qwen-omega-prometa-v${VERSION}.tar.gz"
-          tar -czf "$ARCHIVE" \
+          tar -czf "dist/$ARCHIVE" \
             --exclude='.git' \
             --exclude='__pycache__' \
             --exclude='*.pyc' \
             --exclude='*.backup.*' \
+            --exclude='dist' \
+            --exclude='*.egg-info' \
+            --exclude='build' \
             .
-          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
-          sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-release
+          path: dist/
+          retention-days: 5
+
+  # ── 2. Create GitHub Release ──────────────────────────────────────────────
+  release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-release
+          path: dist/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Extract changelog section
         id: changelog
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          NOTES=$(awk "/^## \[${VERSION}\]/{flag=1;next}/^## \[/{flag=0}flag" CHANGELOG.md 2>/dev/null || echo "See CHANGELOG.md for details.")
+          NOTES=$(awk "/^## \[${VERSION}\]/{flag=1;next}/^## \[/{flag=0}flag" CHANGELOG.md 2>/dev/null \
+            || echo "See CHANGELOG.md for details.")
           echo "NOTES<<EOF" >> "$GITHUB_OUTPUT"
           echo "$NOTES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
@@ -69,7 +117,33 @@ jobs:
           name: "Qwen Omega ProMeta v${{ steps.version.outputs.VERSION }}"
           body: ${{ steps.changelog.outputs.NOTES }}
           files: |
-            ${{ env.ARCHIVE }}
-            ${{ env.ARCHIVE }}.sha256
+            dist/*.whl
+            dist/*.tar.gz
+            dist/qwen-omega
+            dist/SHA256SUMS
           draft: ${{ vars.RELEASE_DRAFT == 'true' }}
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # ── 3. Publish to PyPI ────────────────────────────────────────────────────
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: release
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-release
+          path: dist/
+
+      - name: Publish wheel + sdist to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+          print-hash: true

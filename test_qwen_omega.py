@@ -6,12 +6,9 @@ import tempfile
 import unittest
 import unittest.mock
 
-# Import qwen-omega by path
-import importlib.util
-spec = importlib.util.spec_from_file_location("qwen_omega", pathlib.Path(__file__).parent / "qwen-omega.py")
-qo = importlib.util.module_from_spec(spec)
-sys.modules["qwen_omega"] = qo
-spec.loader.exec_module(qo)
+# Support both installed package and running from source tree
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import qwen_omega as qo  # noqa: E402
 
 
 class TestQwenOmega(unittest.TestCase):
