@@ -1,0 +1,53 @@
+name: "\U0001F4CB Provider Request"
+description: Request a new provider preset or an update to an existing one.
+title: "[Provider]: "
+labels: ["provider", "enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to request a new provider preset (base URL + env key) or to update an existing one.
+
+  - type: input
+    id: provider_name
+    attributes:
+      label: Provider name
+      placeholder: "e.g. Groq, Fireworks AI, AWS Bedrock"
+    validations:
+      required: true
+
+  - type: input
+    id: base_url
+    attributes:
+      label: OpenAI-compatible base URL
+      placeholder: "https://api.example.com/v1"
+    validations:
+      required: true
+
+  - type: input
+    id: env_key
+    attributes:
+      label: Environment variable name for API key
+      placeholder: "EXAMPLE_API_KEY"
+    validations:
+      required: true
+
+  - type: input
+    id: docs_url
+    attributes:
+      label: API documentation URL
+      placeholder: "https://docs.example.com/api"
+
+  - type: checkboxes
+    id: free_tier
+    attributes:
+      label: Free tier available?
+      options:
+        - label: This provider offers a free tier or free models.
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Auth quirks, rate limits, supported model families, etc.

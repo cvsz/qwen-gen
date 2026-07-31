@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/cvsz/qwen-gen/discussions
+    about: Questions, ideas, and general chat go here.
+  - name: 🔒 Security Vulnerability
+    url: https://github.com/cvsz/qwen-gen/security/advisories/new
+    about: Report a security vulnerability privately via GitHub's advisory system.

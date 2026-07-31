@@ -1,0 +1,57 @@
+name: "\U0001F680 Feature Request"
+description: Propose a new feature or enhancement.
+title: "[Feature]: "
+labels: ["enhancement"]
+assignees: ["cvsz"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature! Please fill in the details below.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - New backend / provider preset
+        - New CLI flag / subcommand
+        - Model filtering / discovery
+        - Settings schema / output format
+        - Installer (install-qwen-coder.sh)
+        - Documentation
+        - CI / GitHub Actions
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What problem does this solve? What is the current limitation?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you'd like, including any API or CLI design ideas.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds or alternative approaches you've considered.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and discussions before filing this request.
+          required: true
