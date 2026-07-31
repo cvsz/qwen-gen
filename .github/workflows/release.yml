@@ -12,6 +12,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +22,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
+
+      - name: Install test dependencies
+        run: pip install pytest
 
       - name: Run tests before releasing
         run: python -m pytest test_qwen_omega.py -v --tb=short
@@ -67,5 +71,5 @@ jobs:
           files: |
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
-          draft: false
+          draft: ${{ vars.RELEASE_DRAFT == 'true' }}
           prerelease: ${{ contains(github.ref_name, '-') }}

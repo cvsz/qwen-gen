@@ -1,0 +1,89 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Provider to test (leave blank for all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Dry-run tests (no secrets needed, always runs) ───────────────────────
+  dry-run:
+    name: Dry-run (${{ matrix.provider }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [ollama, openrouter, dashscope, siliconflow]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
+
+      - name: Generate config (dry-run)
+        run: |
+          python qwen-omega.py generate \
+            --provider ${{ matrix.provider }} \
+            --default-model "${{ vars.DEFAULT_MODEL || 'qwen3-coder:latest' }}" \
+            --dry-run
+
+  # ── Live provider tests (require secrets, staging environment) ───────────
+  live-openrouter:
+    name: Live – OpenRouter
+    runs-on: ubuntu-latest
+    environment: staging
+    if: ${{ vars.ENABLE_LIVE_TESTS == 'true' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
+
+      - name: Test OpenRouter connectivity
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          python qwen-omega.py generate \
+            --provider openrouter \
+            --default-model "${{ vars.DEFAULT_MODEL || 'qwen/qwen3-coder' }}" \
+            --list-models \
+            --free
+
+  live-dashscope:
+    name: Live – DashScope (Alibaba)
+    runs-on: ubuntu-latest
+    environment: staging
+    if: ${{ vars.ENABLE_LIVE_TESTS == 'true' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "${{ vars.PYTHON_VERSION || '3.12' }}"
+
+      - name: Test DashScope connectivity
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+        run: |
+          python qwen-omega.py generate \
+            --provider dashscope \
+            --default-model "${{ vars.DASHSCOPE_DEFAULT_MODEL || 'qwen-coder-turbo-latest' }}" \
+            --list-models
