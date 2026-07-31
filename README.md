@@ -209,6 +209,28 @@ qwen-omega repair --dry-run   # preview changes without writing
 
 ---
 
+## How to Get API Provider Keys
+
+| Provider | Environment Variable | Sign-Up / API Key Portal | Notes / Free Tier |
+|---|---|---|---|
+| **Alibaba DashScope (Qwen)** | `DASHSCOPE_API_KEY` | [dashscope.aliyun.com](https://dashscope.aliyun.com) | Official Qwen provider |
+| **OpenRouter** | `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) | Free `:free` models available |
+| **OpenAI** | `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Official GPT models |
+| **DeepSeek** | `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) | DeepSeek Coder models |
+| **SiliconFlow** | `SILICONFLOW_API_KEY` | [siliconflow.cn](https://siliconflow.cn) | Fast inference in Asia |
+| **Groq** | `GROQ_API_KEY` | [console.groq.com/keys](https://console.groq.com/keys) | Ultra-fast LPU inference |
+| **Fireworks AI** | `FIREWORKS_API_KEY` | [fireworks.ai/api-keys](https://fireworks.ai/api-keys) | High-performance open models |
+| **Together AI** | `TOGETHER_API_KEY` | [api.together.xyz](https://api.together.xyz) | Open-source model suite |
+| **NVIDIA NIM** | `NVIDIA_API_KEY` | [build.nvidia.com](https://build.nvidia.com) | Free trial credits |
+| **Anthropic** | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) | Claude models |
+| **Mistral AI** | `MISTRAL_API_KEY` | [console.mistral.ai](https://console.mistral.ai) | Codestral & Mistral models |
+| **Cerebras** | `CEREBRAS_API_KEY` | [cloud.cerebras.ai](https://cloud.cerebras.ai) | Ultra-fast CS-3 inference |
+| **Moonshot (Kimi)** | `MOONSHOT_API_KEY` | [platform.moonshot.cn](https://platform.moonshot.cn) | Kimi long-context models |
+| **Novita AI** | `NOVITA_API_KEY` | [novita.ai](https://novita.ai) | Pay-as-you-go open models |
+| **SambaNova** | `SAMBANOVA_API_KEY` | [cloud.sambanova.ai](https://cloud.sambanova.ai) | SN40L engine speed |
+
+---
+
 ## Generator commands reference
 
 ```
