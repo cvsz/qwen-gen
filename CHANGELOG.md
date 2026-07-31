@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] — 2026-07-31
+
+### Added
+
+- **LiteLLM, LM Studio, NextChat, Open WebUI Provider Integrations**
+  - Preset endpoints and default port configurations (`http://127.0.0.1:4000/v1`, `http://127.0.0.1:1234/v1`, `http://127.0.0.1:3000/api/openai/v1`, `http://127.0.0.1:8080/v1`)
+  - Dedicated `CODER_CATALOG` model lists for all 4 local/web UI backends
+  - Environment key auto-detection (`LITELLM_API_KEY`, `LMSTUDIO_API_KEY`, `NEXTCHAT_API_KEY`, `OPEN_WEBUI_API_KEY`)
+  - Backend options added to both Python CLI (`--backend`) and `install-qwen-coder.sh` installer script
+- **Documentation & Operations**
+  - **`RUNBOOK.md`**: Operations runbook for CLI commands, testing, building, CI/CD, and troubleshooting
+  - **API Provider Portal Guide**: Complete reference table in `README.md` for getting API keys across 15+ providers
+- **Infrastructure & GitHub Secrets Sync**
+  - Full secret synchronization script for 18 provider API keys
+  - Live repository variable synchronization for 19 provider base URLs and CI controls
+
+### Fixed
+
+- `--dry-run` operations without `--models` or active credentials now synthesize default model configurations without throwing missing API key errors.
+
+---
+
 ## [1.2.0] — 2026-07-31
 
 ### Added
@@ -90,7 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`example-settings.json`** — reference settings.json output
 - **`README.md`** — project documentation
 
-[Unreleased]: https://github.com/cvsz/qwen-gen/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/cvsz/qwen-gen/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/cvsz/qwen-gen/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/cvsz/qwen-gen/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/cvsz/qwen-gen/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/cvsz/qwen-gen/releases/tag/v1.0.0
