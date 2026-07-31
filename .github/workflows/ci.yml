@@ -26,6 +26,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install test dependencies
+        run: pip install pytest
+
       - name: Run unit tests
         run: python -m pytest test_qwen_omega.py -v --tb=short
 
@@ -60,6 +63,7 @@ jobs:
         with:
           scandir: "."
           additional_files: "install.sh install-qwen-coder.sh uninstall.sh"
+          severity: error
 
   dry-run:
     name: Dry-run smoke test

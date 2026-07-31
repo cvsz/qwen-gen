@@ -6,6 +6,7 @@ Generates Qwen Code settings using the current v4 modelProviders schema:
 
 No API key values are written to settings.json. Credentials are referenced by envKey.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,7 +23,7 @@ import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, NoReturn
 
 VERSION = "1.1.0"
 DEFAULT_TIMEOUT = 30
@@ -39,45 +40,154 @@ class ProviderPreset:
 
 
 PRESETS: dict[str, ProviderPreset] = {
-    "openai": ProviderPreset("OpenAI", "openai", "https://api.openai.com/v1", "OPENAI_API_KEY"),
-    "openrouter": ProviderPreset("OpenRouter", "openai", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
-    "nvidia": ProviderPreset("NVIDIA NIM", "openai", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY"),
-    "groq": ProviderPreset("Groq", "openai", "https://api.groq.com/openai/v1", "GROQ_API_KEY"),
-    "together": ProviderPreset("Together AI", "openai", "https://api.together.xyz/v1", "TOGETHER_API_KEY"),
-    "fireworks": ProviderPreset("Fireworks AI", "openai", "https://api.fireworks.ai/inference/v1", "FIREWORKS_API_KEY"),
-    "deepinfra": ProviderPreset("DeepInfra", "openai", "https://api.deepinfra.com/v1/openai", "DEEPINFRA_API_KEY"),
-    "cerebras": ProviderPreset("Cerebras", "openai", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY"),
-    "mistral": ProviderPreset("Mistral", "openai", "https://api.mistral.ai/v1", "MISTRAL_API_KEY"),
-    "dashscope": ProviderPreset("Alibaba DashScope", "openai", "https://dashscope.aliyuncs.com/compatible-mode/v1", "DASHSCOPE_API_KEY"),
-    "ollama": ProviderPreset("Ollama", "openai", "http://127.0.0.1:11434/v1", "OLLAMA_API_KEY"),
-    "litellm": ProviderPreset("LiteLLM", "openai", "http://127.0.0.1:4000/v1", "LITELLM_API_KEY"),
-    "siliconflow": ProviderPreset("SiliconFlow", "openai", "https://api.siliconflow.cn/v1", "SILICONFLOW_API_KEY"),
-    "featherless": ProviderPreset("Featherless", "openai", "https://api.featherless.ai/v1", "FEATHERLESS_API_KEY"),
-    "novita": ProviderPreset("Novita AI", "openai", "https://api.novita.ai/v3/openai", "NOVITA_API_KEY"),
-    "hyperbolic": ProviderPreset("Hyperbolic", "openai", "https://api.hyperbolic.xyz/v1", "HYPERBOLIC_API_KEY"),
-    "anyscale": ProviderPreset("Anyscale Endpoints", "openai", "https://api.endpoints.anyscale.com/v1", "ANYSCALE_API_KEY"),
-    "friendli": ProviderPreset("FriendliAI", "openai", "https://inference.friendli.ai/v1", "FRIENDLI_TOKEN"),
-    "sambanova": ProviderPreset("SambaNova", "openai", "https://api.sambanova.ai/v1", "SAMBANOVA_API_KEY"),
-    "deepseek": ProviderPreset("DeepSeek", "openai", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"),
-    "ai21": ProviderPreset("AI21 Studio", "openai", "https://api.ai21.com/studio/v1", "AI21_API_KEY"),
-    "perplexity": ProviderPreset("Perplexity", "openai", "https://api.perplexity.ai", "PERPLEXITY_API_KEY"),
-    "cloudflare": ProviderPreset("Cloudflare Workers AI", "openai", "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1", "CLOUDFLARE_API_KEY"),
-    "vllm": ProviderPreset("vLLM", "openai", "http://127.0.0.1:8000/v1", "VLLM_API_KEY"),
-    "lmstudio": ProviderPreset("LM Studio", "openai", "http://127.0.0.1:1234/v1", "LMSTUDIO_API_KEY"),
-    "tgi": ProviderPreset("Text Generation Inference", "openai", "http://127.0.0.1:8080/v1", "TGI_API_KEY"),
-    "sagemaker": ProviderPreset("AWS SageMaker", "openai", "https://runtime.sagemaker.us-east-1.amazonaws.com", "AWS_ACCESS_KEY_ID"),
-    "bedrock": ProviderPreset("AWS Bedrock Gateway", "openai", "http://127.0.0.1:8000/v1", "AWS_BEDROCK_API_KEY"),
-    "azure-openai": ProviderPreset("Azure OpenAI", "openai", "https://{resource}.openai.azure.com/openai/deployments/{deployment}", "AZURE_OPENAI_API_KEY"),
-    "github": ProviderPreset("GitHub Models", "openai", "https://models.inference.ai.azure.com", "GITHUB_TOKEN"),
+    "openai": ProviderPreset(
+        "OpenAI", "openai", "https://api.openai.com/v1", "OPENAI_API_KEY"
+    ),
+    "openrouter": ProviderPreset(
+        "OpenRouter", "openai", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"
+    ),
+    "nvidia": ProviderPreset(
+        "NVIDIA NIM", "openai", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY"
+    ),
+    "groq": ProviderPreset(
+        "Groq", "openai", "https://api.groq.com/openai/v1", "GROQ_API_KEY"
+    ),
+    "together": ProviderPreset(
+        "Together AI", "openai", "https://api.together.xyz/v1", "TOGETHER_API_KEY"
+    ),
+    "fireworks": ProviderPreset(
+        "Fireworks AI",
+        "openai",
+        "https://api.fireworks.ai/inference/v1",
+        "FIREWORKS_API_KEY",
+    ),
+    "deepinfra": ProviderPreset(
+        "DeepInfra",
+        "openai",
+        "https://api.deepinfra.com/v1/openai",
+        "DEEPINFRA_API_KEY",
+    ),
+    "cerebras": ProviderPreset(
+        "Cerebras", "openai", "https://api.cerebras.ai/v1", "CEREBRAS_API_KEY"
+    ),
+    "mistral": ProviderPreset(
+        "Mistral", "openai", "https://api.mistral.ai/v1", "MISTRAL_API_KEY"
+    ),
+    "dashscope": ProviderPreset(
+        "Alibaba DashScope",
+        "openai",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "DASHSCOPE_API_KEY",
+    ),
+    "ollama": ProviderPreset(
+        "Ollama", "openai", "http://127.0.0.1:11434/v1", "OLLAMA_API_KEY"
+    ),
+    "litellm": ProviderPreset(
+        "LiteLLM", "openai", "http://127.0.0.1:4000/v1", "LITELLM_API_KEY"
+    ),
+    "siliconflow": ProviderPreset(
+        "SiliconFlow", "openai", "https://api.siliconflow.cn/v1", "SILICONFLOW_API_KEY"
+    ),
+    "featherless": ProviderPreset(
+        "Featherless", "openai", "https://api.featherless.ai/v1", "FEATHERLESS_API_KEY"
+    ),
+    "novita": ProviderPreset(
+        "Novita AI", "openai", "https://api.novita.ai/v3/openai", "NOVITA_API_KEY"
+    ),
+    "hyperbolic": ProviderPreset(
+        "Hyperbolic", "openai", "https://api.hyperbolic.xyz/v1", "HYPERBOLIC_API_KEY"
+    ),
+    "anyscale": ProviderPreset(
+        "Anyscale Endpoints",
+        "openai",
+        "https://api.endpoints.anyscale.com/v1",
+        "ANYSCALE_API_KEY",
+    ),
+    "friendli": ProviderPreset(
+        "FriendliAI", "openai", "https://inference.friendli.ai/v1", "FRIENDLI_TOKEN"
+    ),
+    "sambanova": ProviderPreset(
+        "SambaNova", "openai", "https://api.sambanova.ai/v1", "SAMBANOVA_API_KEY"
+    ),
+    "deepseek": ProviderPreset(
+        "DeepSeek", "openai", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"
+    ),
+    "ai21": ProviderPreset(
+        "AI21 Studio", "openai", "https://api.ai21.com/studio/v1", "AI21_API_KEY"
+    ),
+    "perplexity": ProviderPreset(
+        "Perplexity", "openai", "https://api.perplexity.ai", "PERPLEXITY_API_KEY"
+    ),
+    "cloudflare": ProviderPreset(
+        "Cloudflare Workers AI",
+        "openai",
+        "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1",
+        "CLOUDFLARE_API_KEY",
+    ),
+    "vllm": ProviderPreset(
+        "vLLM", "openai", "http://127.0.0.1:8000/v1", "VLLM_API_KEY"
+    ),
+    "lmstudio": ProviderPreset(
+        "LM Studio", "openai", "http://127.0.0.1:1234/v1", "LMSTUDIO_API_KEY"
+    ),
+    "tgi": ProviderPreset(
+        "Text Generation Inference", "openai", "http://127.0.0.1:8080/v1", "TGI_API_KEY"
+    ),
+    "sagemaker": ProviderPreset(
+        "AWS SageMaker",
+        "openai",
+        "https://runtime.sagemaker.us-east-1.amazonaws.com",
+        "AWS_ACCESS_KEY_ID",
+    ),
+    "bedrock": ProviderPreset(
+        "AWS Bedrock Gateway",
+        "openai",
+        "http://127.0.0.1:8000/v1",
+        "AWS_BEDROCK_API_KEY",
+    ),
+    "azure-openai": ProviderPreset(
+        "Azure OpenAI",
+        "openai",
+        "https://{resource}.openai.azure.com/openai/deployments/{deployment}",
+        "AZURE_OPENAI_API_KEY",
+    ),
+    "github": ProviderPreset(
+        "GitHub Models",
+        "openai",
+        "https://models.inference.ai.azure.com",
+        "GITHUB_TOKEN",
+    ),
     "xai": ProviderPreset("xAI (Grok)", "openai", "https://api.x.ai/v1", "XAI_API_KEY"),
-    "cohere": ProviderPreset("Cohere", "openai", "https://api.cohere.com/v2", "COHERE_API_KEY"),
-    "yi": ProviderPreset("01.AI (Lingyi Wan物)", "openai", "https://api.lingyiwanwu.com/v1", "YI_API_KEY"),
-    "zhipu": ProviderPreset("Zhipu AI (GLM)", "openai", "https://open.bigmodel.cn/api/paas/v4", "ZHIPU_API_KEY"),
-    "moonshot": ProviderPreset("Moonshot AI (Kimi)", "openai", "https://api.moonshot.cn/v1", "MOONSHOT_API_KEY"),
-    "baichuan": ProviderPreset("Baichuan AI", "openai", "https://api.baichuan-ai.com/v1", "BAICHUAN_API_KEY"),
-    "minimax": ProviderPreset("MiniMax", "openai", "https://api.minimax.chat/v1", "MINIMAX_API_KEY"),
-    "stepfun": ProviderPreset("StepFun (阶跃星辰)", "openai", "https://api.stepfun.com/v1", "STEPFUN_API_KEY"),
-    "hunyuan": ProviderPreset("Tencent Hunyuan", "openai", "https://api.hunyuan.tencentyun.com/v1", "HUNYUAN_API_KEY"),
+    "cohere": ProviderPreset(
+        "Cohere", "openai", "https://api.cohere.com/v2", "COHERE_API_KEY"
+    ),
+    "yi": ProviderPreset(
+        "01.AI (Lingyi Wan物)", "openai", "https://api.lingyiwanwu.com/v1", "YI_API_KEY"
+    ),
+    "zhipu": ProviderPreset(
+        "Zhipu AI (GLM)",
+        "openai",
+        "https://open.bigmodel.cn/api/paas/v4",
+        "ZHIPU_API_KEY",
+    ),
+    "moonshot": ProviderPreset(
+        "Moonshot AI (Kimi)", "openai", "https://api.moonshot.cn/v1", "MOONSHOT_API_KEY"
+    ),
+    "baichuan": ProviderPreset(
+        "Baichuan AI", "openai", "https://api.baichuan-ai.com/v1", "BAICHUAN_API_KEY"
+    ),
+    "minimax": ProviderPreset(
+        "MiniMax", "openai", "https://api.minimax.chat/v1", "MINIMAX_API_KEY"
+    ),
+    "stepfun": ProviderPreset(
+        "StepFun (阶跃星辰)", "openai", "https://api.stepfun.com/v1", "STEPFUN_API_KEY"
+    ),
+    "hunyuan": ProviderPreset(
+        "Tencent Hunyuan",
+        "openai",
+        "https://api.hunyuan.tencentyun.com/v1",
+        "HUNYUAN_API_KEY",
+    ),
 }
 
 # ── Qwen Coder model catalog (backend → ordered list of recommended model IDs) ──
@@ -112,7 +222,7 @@ def eprint(*args: object) -> None:
     print(*args, file=sys.stderr)
 
 
-def die(message: str, code: int = 1) -> "NoReturn":
+def die(message: str, code: int = 1) -> NoReturn:
     eprint(f"ERROR: {message}")
     raise SystemExit(code)
 
@@ -131,7 +241,9 @@ def load_json(path: pathlib.Path) -> dict[str, Any]:
 
 def atomic_write_json(path: pathlib.Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
     tmp = pathlib.Path(tmp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -172,7 +284,9 @@ def request_json(url: str, api_key: str, timeout: int, insecure: bool = False) -
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(url, headers=headers, method="GET")
-    context = ssl._create_unverified_context() if insecure else ssl.create_default_context()
+    context = (
+        ssl._create_unverified_context() if insecure else ssl.create_default_context()
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout, context=context) as response:
             raw = response.read()
@@ -233,15 +347,23 @@ KNOWN_FREE_MODELS: list[str] = [
 
 def explicitly_free(item: dict[str, Any]) -> bool:
     model_id = str(item.get("id", "")).lower().strip()
-    if model_id == "openrouter/free" or model_id.endswith(":free") or "/free" in model_id:
+    if (
+        model_id == "openrouter/free"
+        or model_id.endswith(":free")
+        or "/free" in model_id
+    ):
         return True
     if item.get("is_free") is True or item.get("free") is True:
         return True
     pricing = item.get("pricing")
     if isinstance(pricing, dict):
         charge_fields = [
-            pricing.get("prompt"), pricing.get("completion"), pricing.get("request"),
-            pricing.get("image"), pricing.get("input"), pricing.get("output"),
+            pricing.get("prompt"),
+            pricing.get("completion"),
+            pricing.get("request"),
+            pricing.get("image"),
+            pricing.get("input"),
+            pricing.get("output"),
         ]
         present = [v for v in charge_fields if v is not None]
         if bool(present) and all(decimal_zero(v) for v in present):
@@ -265,8 +387,12 @@ def display_name(model_id: str) -> str:
 
 
 def to_model_configs(
-    items: list[dict[str, Any]], base_url: str, env_key: str,
-    timeout_ms: int, max_retries: int, context_window: int | None,
+    items: list[dict[str, Any]],
+    base_url: str,
+    env_key: str,
+    timeout_ms: int,
+    max_retries: int,
+    context_window: int | None,
 ) -> list[dict[str, Any]]:
     configs: list[dict[str, Any]] = []
     for item in unique_models(items):
@@ -305,17 +431,31 @@ def normalize_existing_providers(settings: dict[str, Any]) -> list[str]:
         return repairs
     for key, value in list(providers.items()):
         if isinstance(value, list):
-            providers[key] = [v for v in value if isinstance(v, dict) and isinstance(v.get("id"), str)]
+            providers[key] = [
+                v for v in value if isinstance(v, dict) and isinstance(v.get("id"), str)
+            ]
             continue
         if isinstance(value, dict) and isinstance(value.get("models"), list):
-            providers[key] = [v for v in value["models"] if isinstance(v, dict) and isinstance(v.get("id"), str)]
+            providers[key] = [
+                v
+                for v in value["models"]
+                if isinstance(v, dict) and isinstance(v.get("id"), str)
+            ]
             repairs.append(f"converted wrapped modelProviders.{key}.models to an array")
             continue
         if isinstance(value, str):
-            ids = [part.strip().strip('"') for part in value.split(",") if part.strip().strip('"')]
+            ids = [
+                part.strip().strip('"')
+                for part in value.split(",")
+                if part.strip().strip('"')
+            ]
             if ids:
-                providers[key] = [{"id": model_id, "name": display_name(model_id)} for model_id in ids]
-                repairs.append(f"converted comma-separated modelProviders.{key} string to an array")
+                providers[key] = [
+                    {"id": model_id, "name": display_name(model_id)} for model_id in ids
+                ]
+                repairs.append(
+                    f"converted comma-separated modelProviders.{key} string to an array"
+                )
                 continue
         providers[key] = []
         repairs.append(f"replaced invalid modelProviders.{key} with an empty array")
@@ -340,13 +480,18 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 continue
             model_id = model.get("id")
             if not isinstance(model_id, str) or not model_id.strip():
-                errors.append(f"modelProviders.{protocol}[{index}].id must be a non-empty string")
+                errors.append(
+                    f"modelProviders.{protocol}[{index}].id must be a non-empty string"
+                )
             elif model_id in seen:
                 errors.append(f"duplicate model id in {protocol}: {model_id}")
             else:
                 seen.add(model_id)
             env_key = model.get("envKey")
-            if env_key is not None and (not isinstance(env_key, str) or not re.match(r"^[A-Z_][A-Z0-9_]*$", env_key)):
+            if env_key is not None and (
+                not isinstance(env_key, str)
+                or not re.match(r"^[A-Z_][A-Z0-9_]*$", env_key)
+            ):
                 errors.append(f"invalid envKey for {protocol}:{model_id}")
     model = settings.get("model", {})
     if model and not isinstance(model, dict):
@@ -355,10 +500,14 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
 
 
 def choose_default_model(configs: list[dict[str, Any]], requested: str | None) -> str:
-    ids = [str(m["id"]) for m in configs if isinstance(m, dict) and m.get("id") is not None]
+    ids = [
+        str(m["id"]) for m in configs if isinstance(m, dict) and m.get("id") is not None
+    ]
     if requested:
         if requested not in ids:
-            die(f"default model '{requested}' is not in discovered/configured model list")
+            die(
+                f"default model '{requested}' is not in discovered/configured model list"
+            )
         return requested
     preferences = ("coder", "code", "qwen", "gpt-5", "gpt-4.1", "deepseek")
     for token in preferences:
@@ -373,7 +522,11 @@ def choose_default_model(configs: list[dict[str, Any]], requested: str | None) -
 def command_generate(args: argparse.Namespace) -> int:
     settings_path = pathlib.Path(args.settings).expanduser()
     preset = PRESETS.get(args.provider) if args.provider else None
-    base_url = args.base_url or os.environ.get("OPENAI_BASE_URL") or (preset.base_url if preset else None)
+    base_url = (
+        args.base_url
+        or os.environ.get("OPENAI_BASE_URL")
+        or (preset.base_url if preset else None)
+    )
     env_key = args.env_key or (preset.env_key if preset else "OPENAI_API_KEY")
     protocol = args.protocol or (preset.protocol if preset else "openai")
     if not base_url:
@@ -386,7 +539,9 @@ def command_generate(args: argparse.Namespace) -> int:
     else:
         if not api_key and not args.allow_unauthenticated:
             die(f"environment variable {env_key} is unset; export it or pass --api-key")
-        payload = request_json(models_url(base_url), api_key, args.timeout, args.insecure)
+        payload = request_json(
+            models_url(base_url), api_key, args.timeout, args.insecure
+        )
         model_items = extract_model_objects(payload)
 
     if args.free:
@@ -394,24 +549,43 @@ def command_generate(args: argparse.Namespace) -> int:
         if not filtered_free and args.provider == "openrouter":
             filtered_free = [{"id": m} for m in KNOWN_FREE_MODELS]
         if not filtered_free:
-            die("no explicitly free models found; refusing to label accessible paid models as free")
+            die(
+                "no explicitly free models found; refusing to label accessible paid models as free"
+            )
         model_items = filtered_free
     if args.filter_model:
         pattern = re.compile(args.filter_model, re.IGNORECASE)
-        model_items = [item for item in model_items if pattern.search(str(item.get("id", "")))]
+        model_items = [
+            item for item in model_items if pattern.search(str(item.get("id", "")))
+        ]
     if args.include_regex:
         pattern = re.compile(args.include_regex, re.IGNORECASE)
-        model_items = [item for item in model_items if pattern.search(str(item.get("id", "")))]
+        model_items = [
+            item for item in model_items if pattern.search(str(item.get("id", "")))
+        ]
     if args.exclude_regex:
         pattern = re.compile(args.exclude_regex, re.IGNORECASE)
-        model_items = [item for item in model_items if not pattern.search(str(item.get("id", "")))]
+        model_items = [
+            item for item in model_items if not pattern.search(str(item.get("id", "")))
+        ]
     if args.coder_only:
-        coder_pattern = re.compile(r"code|coder|qwen.*code|deepseek.*coder|starcoder|codellama|dev", re.IGNORECASE)
-        model_items = [item for item in model_items if coder_pattern.search(str(item.get("id", "")))]
+        coder_pattern = re.compile(
+            r"code|coder|qwen.*code|deepseek.*coder|starcoder|codellama|dev",
+            re.IGNORECASE,
+        )
+        model_items = [
+            item
+            for item in model_items
+            if coder_pattern.search(str(item.get("id", "")))
+        ]
     if args.min_context:
         filtered: list[dict[str, Any]] = []
         for item in model_items:
-            ctx = item.get("context_length") or item.get("context_window") or item.get("max_tokens")
+            ctx = (
+                item.get("context_length")
+                or item.get("context_window")
+                or item.get("max_tokens")
+            )
             if ctx is not None:
                 try:
                     if int(ctx) >= args.min_context:
@@ -427,8 +601,12 @@ def command_generate(args: argparse.Namespace) -> int:
         die("model list is empty after filtering")
 
     configs = to_model_configs(
-        model_items, base_url, env_key, args.request_timeout_ms,
-        args.max_retries, args.context_window,
+        model_items,
+        base_url,
+        env_key,
+        args.request_timeout_ms,
+        args.max_retries,
+        args.context_window,
     )
     default_model = choose_default_model(configs, args.default_model)
 
@@ -524,7 +702,12 @@ def command_providers(args: argparse.Namespace) -> int:
     print(fmt.format("KEY", "NAME", "BASE URL", "ENV KEY"))
     print("-" * 80)
     for key, p in sorted(PRESETS.items()):
-        if query and query not in key and query not in p.name.lower() and query not in p.base_url.lower():
+        if (
+            query
+            and query not in key
+            and query not in p.name.lower()
+            and query not in p.base_url.lower()
+        ):
             continue
         print(fmt.format(key, p.name[:24], p.base_url[:32], p.env_key))
     return 0
@@ -543,7 +726,10 @@ def command_doctor(args: argparse.Namespace) -> int:
     print(f"npm: {npm or 'not installed'}")
     if node:
         try:
-            print("node version:", subprocess.check_output([node, "--version"], text=True).strip())
+            print(
+                "node version:",
+                subprocess.check_output([node, "--version"], text=True).strip(),
+            )
         except subprocess.SubprocessError:
             pass
     if path.exists():
@@ -567,7 +753,6 @@ def _detect_ram_gb() -> int:
 
 def command_install_coder(args: argparse.Namespace) -> int:
     """High-level Qwen Coder install: choose backend, model, generate settings."""
-    import shlex
 
     backend: str = args.backend
     model: str = args.model or ""
@@ -600,11 +785,16 @@ def command_install_coder(args: argparse.Namespace) -> int:
     if not model:
         if backend == "ollama":
             ram_gb = _detect_ram_gb()
-            if   ram_gb >= 40: model = catalog[0]   # 32b
-            elif ram_gb >= 20: model = catalog[1]   # 14b
-            elif ram_gb >= 10: model = catalog[2]   # 7b
-            elif ram_gb >=  5: model = catalog[3]   # 3b
-            else:               model = catalog[4]  # 1.5b
+            if ram_gb >= 40:
+                model = catalog[0]  # 32b
+            elif ram_gb >= 20:
+                model = catalog[1]  # 14b
+            elif ram_gb >= 10:
+                model = catalog[2]  # 7b
+            elif ram_gb >= 5:
+                model = catalog[3]  # 3b
+            else:
+                model = catalog[4]  # 1.5b
             print(f"RAM     : {ram_gb}GB → {model}")
         elif catalog:
             model = catalog[0]
@@ -615,8 +805,8 @@ def command_install_coder(args: argparse.Namespace) -> int:
 
     # ── Validate API key availability ──────────────────────────────────────
     key_map = {
-        "dashscope":   "DASHSCOPE_API_KEY",
-        "openrouter":  "OPENROUTER_API_KEY",
+        "dashscope": "DASHSCOPE_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
         "siliconflow": "SILICONFLOW_API_KEY",
     }
     if backend in key_map and not os.environ.get(key_map[backend]):
@@ -624,9 +814,9 @@ def command_install_coder(args: argparse.Namespace) -> int:
 
     # ── Build generate args namespace ──────────────────────────────────────
     provider_map = {
-        "ollama":      "ollama",
-        "dashscope":   "dashscope",
-        "openrouter":  "openrouter",
+        "ollama": "ollama",
+        "dashscope": "dashscope",
+        "openrouter": "openrouter",
         "siliconflow": "siliconflow",
     }
     provider = provider_map.get(backend)
@@ -635,12 +825,14 @@ def command_install_coder(args: argparse.Namespace) -> int:
 
     preset = PRESETS[provider]
     base_url = preset.base_url
-    env_key  = preset.env_key
-    api_key  = os.environ.get(env_key, "")
+    env_key = preset.env_key
+    api_key = os.environ.get(env_key, "")
 
     # For Ollama, skip live discovery — use catalog directly
     if backend == "ollama":
-        model_items: list[dict[str, Any]] = [{"id": m} for m in (catalog if not model else [model])]
+        model_items: list[dict[str, Any]] = [
+            {"id": m} for m in (catalog if not model else [model])
+        ]
         # Always include selected model first
         if model not in [m["id"] for m in model_items]:
             model_items.insert(0, {"id": model})
@@ -654,12 +846,16 @@ def command_install_coder(args: argparse.Namespace) -> int:
             model_items = [{"id": m} for m in catalog]
         else:
             payload = request_json(
-                models_url(base_url), api_key,
-                DEFAULT_TIMEOUT, insecure=False,
+                models_url(base_url),
+                api_key,
+                DEFAULT_TIMEOUT,
+                insecure=False,
             )
             model_items = extract_model_objects(payload)
             coder_pat = re.compile(r"code|coder", re.IGNORECASE)
-            model_items = [it for it in model_items if coder_pat.search(str(it.get("id", "")))]
+            model_items = [
+                it for it in model_items if coder_pat.search(str(it.get("id", "")))
+            ]
             if free_only:
                 model_items = [it for it in model_items if explicitly_free(it)] or [
                     {"id": m} for m in catalog
@@ -670,8 +866,12 @@ def command_install_coder(args: argparse.Namespace) -> int:
 
     settings_path = pathlib.Path(args.settings).expanduser()
     configs = to_model_configs(
-        model_items, base_url, env_key,
-        120_000, 3, None,
+        model_items,
+        base_url,
+        env_key,
+        120_000,
+        3,
+        None,
     )
     default_model = choose_default_model(configs, model)
 
@@ -722,41 +922,64 @@ def command_install_coder(args: argparse.Namespace) -> int:
             subprocess.run(["ollama", "pull", model], check=True)
             print(f"Ready    : {model}")
         except subprocess.CalledProcessError:
-            eprint(f"WARNING: ollama pull {model} failed. Run manually: ollama pull {model}")
+            eprint(
+                f"WARNING: ollama pull {model} failed. Run manually: ollama pull {model}"
+            )
 
     print("Done. Run: qwen")
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="qwen-omega", description="Generate and validate production-grade Qwen Code configuration")
+    parser = argparse.ArgumentParser(
+        prog="qwen-omega",
+        description="Generate and validate production-grade Qwen Code configuration",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     gen = sub.add_parser("generate", help="discover models and generate settings.json")
     gen.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     gen.add_argument("--provider", choices=sorted(PRESETS))
-    gen.add_argument("--protocol", default=None, help="Qwen provider protocol key; default openai")
+    gen.add_argument(
+        "--protocol", default=None, help="Qwen provider protocol key; default openai"
+    )
     gen.add_argument("--base-url")
     gen.add_argument("--env-key")
     gen.add_argument("--api-key", help="used only for discovery; never persisted")
     gen.add_argument("--models", help="comma-separated model IDs; skips API discovery")
     gen.add_argument("--default-model")
-    gen.add_argument("--free", action="store_true", help="include only models explicitly marked zero-cost/free")
+    gen.add_argument(
+        "--free",
+        action="store_true",
+        help="include only models explicitly marked zero-cost/free",
+    )
     gen.add_argument("--filter-model", help="regex pattern to filter models by ID")
     gen.add_argument("--include-regex", help="alias for --filter-model")
     gen.add_argument("--exclude-regex", help="regex pattern to exclude matching models")
-    gen.add_argument("--coder-only", action="store_true", help="filter for code/coder models")
-    gen.add_argument("--min-context", type=int, help="minimum context window length requirement")
+    gen.add_argument(
+        "--coder-only", action="store_true", help="filter for code/coder models"
+    )
+    gen.add_argument(
+        "--min-context", type=int, help="minimum context window length requirement"
+    )
     gen.add_argument("--limit", type=int)
     gen.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
     gen.add_argument("--request-timeout-ms", type=int, default=120000)
     gen.add_argument("--max-retries", type=int, default=3)
     gen.add_argument("--context-window", type=int)
     gen.add_argument("--max-session-turns", type=int, default=-1)
-    gen.add_argument("--approval-mode", choices=("plan", "default", "auto-edit", "auto", "yolo"), default="default")
+    gen.add_argument(
+        "--approval-mode",
+        choices=("plan", "default", "auto-edit", "auto", "yolo"),
+        default="default",
+    )
     gen.add_argument("--allow-unauthenticated", action="store_true")
-    gen.add_argument("--insecure", action="store_true", help="disable TLS verification; local testing only")
+    gen.add_argument(
+        "--insecure",
+        action="store_true",
+        help="disable TLS verification; local testing only",
+    )
     gen.add_argument("--no-backup", action="store_true")
     gen.add_argument("--dry-run", action="store_true")
     gen.set_defaults(func=command_generate)
@@ -765,7 +988,9 @@ def build_parser() -> argparse.ArgumentParser:
     val.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     val.set_defaults(func=command_validate)
 
-    repair = sub.add_parser("repair", help="repair string/wrapped legacy modelProviders")
+    repair = sub.add_parser(
+        "repair", help="repair string/wrapped legacy modelProviders"
+    )
     repair.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     repair.add_argument("--dry-run", action="store_true")
     repair.set_defaults(func=command_repair)
@@ -774,7 +999,9 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     doctor.set_defaults(func=command_doctor)
 
-    prov = sub.add_parser("providers", help="list supported provider URLs, names, and environment keys")
+    prov = sub.add_parser(
+        "providers", help="list supported provider URLs, names, and environment keys"
+    )
     prov.add_argument("--query", "-q", help="search filter for provider key/name/URL")
     prov.set_defaults(func=command_providers)
 

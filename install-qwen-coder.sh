@@ -344,14 +344,20 @@ install_qwen_code
 if [[ -n "$PULL_MODEL" && "$DRY_RUN" != true ]]; then
   info "Pulling Ollama model: $PULL_MODEL"
   if command -v ollama >/dev/null 2>&1; then
-    ollama pull "$PULL_MODEL" && ok "Model ready: $PULL_MODEL" || warn "ollama pull failed; model may already exist"
+    if ollama pull "$PULL_MODEL"; then
+      ok "Model ready: $PULL_MODEL"
+    else
+      warn "ollama pull failed; model may already exist"
+    fi
   else
     # Try via REST API
-    curl -fsSL -X POST "${OLLAMA_HOST}/api/pull" \
+    if curl -fsSL -X POST "${OLLAMA_HOST}/api/pull" \
       -d "{\"name\":\"$PULL_MODEL\",\"stream\":false}" \
-      -H "Content-Type: application/json" >/dev/null \
-      && ok "Model ready: $PULL_MODEL" \
-      || warn "Failed to pull $PULL_MODEL; run: ollama pull $PULL_MODEL"
+      -H "Content-Type: application/json" >/dev/null; then
+      ok "Model ready: $PULL_MODEL"
+    else
+      warn "Failed to pull $PULL_MODEL; run: ollama pull $PULL_MODEL"
+    fi
   fi
 fi
 

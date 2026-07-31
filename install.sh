@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-VERSION="1.0.0"
+export VERSION="1.0.0"
 PREFIX="${PREFIX:-$HOME/.local}"
 BIN_DIR="${BIN_DIR:-$PREFIX/bin}"
 INSTALL_QWEN="${INSTALL_QWEN:-auto}"
@@ -127,6 +127,7 @@ ARGS=(generate --approval-mode "$APPROVAL_MODE")
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
   *)
+    # shellcheck disable=SC2016  # $PATH is intentionally literal for user to copy
     printf '\nAdd this to ~/.bashrc or ~/.zshrc:\n  export PATH="%s:$PATH"\n' "$BIN_DIR"
     ;;
 esac
