@@ -10006,13 +10006,13 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     <aside class=\"sidebar\">
       <div class=\"brand\">
         <h1>Qwen Gen Chat</h1>
-        <p>Local chat UI driven by your qwen-gen settings.</p>
+        <p>Ready-to-use local chat interface driven by your qwen-gen settings.</p>
       </div>
       <div class=\"workspace-hero\">
         <div>
           <div class=\"eyebrow\">Workspace overview</div>
-          <h2>Full-feature chat studio</h2>
-          <p>Model routing, templates, files, memory, notes, tools, and webhooks stay in one place.</p>
+          <h2>Chat interface ready for use</h2>
+          <p>Model routing, templates, files, memory, notes, tools, and webhooks stay in one place and are ready once your settings are loaded.</p>
         </div>
         <div class=\"workspace-stats\">
           <div class=\"workspace-stat\">
@@ -14211,16 +14211,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     function renderMessages() {{
       const convo = activeConversation();
       els.chat.innerHTML = '';
-      if (!convo || !convo.messages || !convo.messages.length) {{
-        const starterChips = starterPromptTemplates.map((template) => `
+        if (!convo || !convo.messages || !convo.messages.length) {{
+          const starterChips = starterPromptTemplates.map((template) => `
           <button type=\"button\" class=\"chip\" data-starter-template=\"${{escapeHtml(template.id)}}\">${{escapeHtml(template.name)}}</button>
         `).join('');
         els.chat.innerHTML = `
           <div class=\"chat-empty\">
             <div class=\"chat-empty-card\">
-              <div class=\"eyebrow\">Ready to chat</div>
-              <h3>Start with a template, a file, or a direct prompt.</h3>
-              <p>This workspace keeps the full flow in one page: choose a model, seed the system prompt, compare providers, and keep the conversation history organized.</p>
+              <div class=\"eyebrow\">Ready for use</div>
+              <h3>Open a model, load a template, or start a new conversation.</h3>
+              <p>This workspace is already wired for prompts, files, agents, and history. Use the quick actions below to begin with one click.</p>
               <div class=\"chat-empty-actions\">
                 <button type=\"button\" class=\"secondary\" id=\"chat-empty-focus\">Focus prompt</button>
                 <button type=\"button\" class=\"secondary\" id=\"chat-empty-new\">New chat</button>
@@ -14229,6 +14229,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
               <div class=\"stack\">
                 <div class=\"hint\">Starter templates</div>
                 <div class=\"chips\" id=\"chat-empty-starters\">${{starterChips}}</div>
+              </div>
+              <div class=\"chat-empty-actions\">
+                <button type=\"button\" class=\"secondary\" id=\"chat-empty-presets\">Add presets</button>
+                <button type=\"button\" class=\"secondary\" id=\"chat-empty-templates\">Templates</button>
+                <button type=\"button\" class=\"secondary\" id=\"chat-empty-files\">Upload files</button>
               </div>
             </div>
           </div>
@@ -14242,6 +14247,19 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         }});
         els.chat.querySelector('#chat-empty-shortcuts')?.addEventListener('click', () => {{
           openShortcutsHelp();
+        }});
+        els.chat.querySelector('#chat-empty-presets')?.addEventListener('click', async () => {{
+          try {{
+            await addProviderPresets();
+          }} catch (err) {{
+            window.alert(String(err.message || err));
+          }}
+        }});
+        els.chat.querySelector('#chat-empty-templates')?.addEventListener('click', () => {{
+          setTemplateDrawerOpen(true);
+        }});
+        els.chat.querySelector('#chat-empty-files')?.addEventListener('click', () => {{
+          els.fileUpload?.click();
         }});
         els.chat.querySelectorAll('[data-starter-template]').forEach((button) => {{
           button.addEventListener('click', () => {{
