@@ -9797,6 +9797,55 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         rgba(17, 23, 43, 0.82);
       box-shadow: var(--shadow);
     }}
+    .chat-empty-card.onboarding {{
+      width: min(980px, 100%);
+      padding: 26px;
+      gap: 18px;
+    }}
+    .onboarding-top {{
+      display: grid;
+      gap: 10px;
+    }}
+    .onboarding-grid {{
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 14px;
+    }}
+    .onboarding-panel {{
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--line);
+    }}
+    .onboarding-panel h4 {{
+      margin: 0;
+      font-size: 0.98rem;
+    }}
+    .onboarding-list {{
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }}
+    .onboarding-list li {{
+      display: grid;
+      gap: 4px;
+      padding: 12px 12px 12px 14px;
+      border-radius: 14px;
+      background: rgba(11, 16, 32, 0.55);
+      border: 1px solid var(--line);
+    }}
+    .onboarding-list strong {{
+      font-size: 0.92rem;
+    }}
+    .onboarding-list span {{
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }}
     .chat-empty-card .eyebrow {{
       text-transform: uppercase;
       letter-spacing: 0.12em;
@@ -14211,29 +14260,66 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     function renderMessages() {{
       const convo = activeConversation();
       els.chat.innerHTML = '';
-        if (!convo || !convo.messages || !convo.messages.length) {{
-          const starterChips = starterPromptTemplates.map((template) => `
+      if (!convo || !convo.messages || !convo.messages.length) {{
+        const firstLoad = !state.models.length && !state.conversations.length;
+        const starterChips = starterPromptTemplates.map((template) => `
           <button type=\"button\" class=\"chip\" data-starter-template=\"${{escapeHtml(template.id)}}\">${{escapeHtml(template.name)}}</button>
         `).join('');
+        const onboardingSteps = [
+          {{
+            title: 'Add provider presets',
+            body: 'Seed your model list so the selector and compare mode have something to route to.',
+          }},
+          {{
+            title: 'Open the template gallery',
+            body: 'Load a starter prompt into the system prompt before you send your first message.',
+          }},
+          {{
+            title: 'Upload or import files',
+            body: 'Attach context files now so the first chat already has reference material.',
+          }},
+          {{
+            title: 'Start a conversation',
+            body: 'Use the quick composer actions or pick a starter template to begin immediately.',
+          }},
+        ];
         els.chat.innerHTML = `
           <div class=\"chat-empty\">
-            <div class=\"chat-empty-card\">
-              <div class=\"eyebrow\">Ready for use</div>
-              <h3>Open a model, load a template, or start a new conversation.</h3>
-              <p>This workspace is already wired for prompts, files, agents, and history. Use the quick actions below to begin with one click.</p>
+            <div class=\"chat-empty-card ${{firstLoad ? 'onboarding' : ''}}\">
+              <div class=\"onboarding-top\">
+                <div class=\"eyebrow\">${{firstLoad ? 'First load onboarding' : 'Ready for use'}}</div>
+                <h3>${{firstLoad ? 'Set up your first workspace' : 'Open a model, load a template, or start a new conversation.'}}</h3>
+                <p>${{firstLoad
+                  ? 'No models and no conversations are configured yet. Use the setup actions below to seed the workspace and start chatting in one pass.'
+                  : 'This workspace is already wired for prompts, files, agents, and history. Use the quick actions below to begin with one click.'}}</p>
+              </div>
               <div class=\"chat-empty-actions\">
                 <button type=\"button\" class=\"secondary\" id=\"chat-empty-focus\">Focus prompt</button>
                 <button type=\"button\" class=\"secondary\" id=\"chat-empty-new\">New chat</button>
                 <button type=\"button\" class=\"secondary\" id=\"chat-empty-shortcuts\">Shortcuts</button>
               </div>
-              <div class=\"stack\">
-                <div class=\"hint\">Starter templates</div>
-                <div class=\"chips\" id=\"chat-empty-starters\">${{starterChips}}</div>
-              </div>
-              <div class=\"chat-empty-actions\">
-                <button type=\"button\" class=\"secondary\" id=\"chat-empty-presets\">Add presets</button>
-                <button type=\"button\" class=\"secondary\" id=\"chat-empty-templates\">Templates</button>
-                <button type=\"button\" class=\"secondary\" id=\"chat-empty-files\">Upload files</button>
+              <div class=\"onboarding-grid\">
+                <div class=\"onboarding-panel\">
+                  <h4>Recommended first steps</h4>
+                  <ul class=\"onboarding-list\">
+                    ${{onboardingSteps.map((step) => `
+                      <li>
+                        <strong>${{escapeHtml(step.title)}}</strong>
+                        <span>${{escapeHtml(step.body)}}</span>
+                      </li>
+                    `).join('')}}
+                  </ul>
+                </div>
+                <div class=\"onboarding-panel\">
+                  <h4>Starter templates</h4>
+                  <p>Pick a starter prompt and send it immediately, or edit the system prompt first.</p>
+                  <div class=\"chips\" id=\"chat-empty-starters\">${{starterChips}}</div>
+                  <div class=\"chat-empty-actions\">
+                    <button type=\"button\" class=\"secondary\" id=\"chat-empty-presets\">Add presets</button>
+                    <button type=\"button\" class=\"secondary\" id=\"chat-empty-templates\">Templates</button>
+                    <button type=\"button\" class=\"secondary\" id=\"chat-empty-files\">Upload files</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
