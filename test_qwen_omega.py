@@ -885,7 +885,7 @@ class TestQwenOmega(unittest.TestCase):
             self.assertEqual(response.headers.get_content_type(), "application/manifest+json")
 
         sw = urllib.request.urlopen(f"{base_url}/sw.js").read().decode("utf-8")
-        self.assertIn("qwen-gen-chat-v1", sw)
+        self.assertIn("qwen-gen-chat-v2", sw)
         self.assertIn("self.addEventListener('fetch'", sw)
         head_req = urllib.request.Request(f"{base_url}/sw.js", method="HEAD")
         with urllib.request.urlopen(head_req) as response:

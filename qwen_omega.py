@@ -16211,7 +16211,7 @@ def _chat_manifest() -> dict[str, Any]:
 
 
 def _chat_service_worker_script() -> str:
-    return """const CACHE_NAME = 'qwen-gen-chat-v1';
+    return """const CACHE_NAME = 'qwen-gen-chat-v2';
 const SHELL = ['/', '/ai.html', '/platform/ai.html', '/manifest.webmanifest', '/qwen-gen-icon.svg', '/api/health'];
 
 self.addEventListener('install', (event) => {
@@ -16234,6 +16234,19 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(event.request);
+        return response;
+      } catch (err) {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(event.request);
+        return cached || Response.error();
+      }
+    })());
+    return;
+  }
   if (event.request.mode === 'navigate') {
     event.respondWith((async () => {
       try {
