@@ -11,4 +11,6 @@ build/
 .DS_Store
 *.log
 *.tmp
+*.swp
+*.swo
 settings.json

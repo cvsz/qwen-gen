@@ -2,8 +2,8 @@
   "modelProviders": {
     "openai": [
       {
-        "id": "deepseek-coder:latest",
-        "name": "deepseek coder:latest",
+        "id": "qwen2.5-coder:7b-instruct-q4_K_M",
+        "name": "qwen2.5 coder 7b instruct q4_k_m",
         "baseUrl": "http://127.0.0.1:11434/v1",
         "envKey": "OLLAMA_API_KEY",
         "generationConfig": {
@@ -42,7 +42,196 @@
     }
   },
   "model": {
-    "name": "qwen3-coder:latest",
+    "name": "qwen2.5-coder:7b-instruct-q4_K_M",
     "maxSessionTurns": -1
-  }
+  },
+  "promptTemplates": [],
+  "folders": [],
+  "conversations": [
+    {
+      "id": "code-copy-smoke",
+      "title": "Write python hello world",
+      "transcript": "user: write python hello world\nassistant: Certainly! Here's a simple Python program that prints \"Hello, World!\" to the console:\n\n```python\nprint(\"Hello, World!\")\n```\n\nTo run this code, you can save it in a file with a `.py` extension (e.g., `hello.py`) and then execute it using a Python interpreter. For example, if you save the file as `hello.py`, you can run it by opening a terminal or command prompt and typing:\n\n```\npython hello.py\n```\n\nThis will output:\n\n```\nHello, World!\n```",
+      "messages": [
+        {
+          "role": "user",
+          "content": "write python hello world"
+        },
+        {
+          "role": "assistant",
+          "content": "Certainly! Here's a simple Python program that prints \"Hello, World!\" to the console:\n\n```python\nprint(\"Hello, World!\")\n```\n\nTo run this code, you can save it in a file with a `.py` extension (e.g., `hello.py`) and then execute it using a Python interpreter. For example, if you save the file as `hello.py`, you can run it by opening a terminal or command prompt and typing:\n\n```\npython hello.py\n```\n\nThis will output:\n\n```\nHello, World!\n```"
+        }
+      ]
+    },
+    {
+      "id": "debug",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I assist you today?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I assist you today?"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 30,
+        "completion_tokens": 10,
+        "total_tokens": 40
+      }
+    },
+    {
+      "id": "smoke",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I assist you today?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I assist you today?"
+        }
+      ]
+    },
+    {
+      "id": "smoke-public",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I assist you today?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I assist you today?"
+        }
+      ]
+    },
+    {
+      "id": "status-local",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I assist you today?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I assist you today?"
+        }
+      ]
+    },
+    {
+      "id": "status-local-nonstream",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I assist you today? If you have any questions or need information, feel free to let me know.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I assist you today? If you have any questions or need information, feel free to let me know."
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 30,
+        "completion_tokens": 26,
+        "total_tokens": 56
+      }
+    },
+    {
+      "id": "status-local-qwen2",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I assist you today?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I assist you today?"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 30,
+        "completion_tokens": 10,
+        "total_tokens": 40
+      }
+    },
+    {
+      "id": "status-public",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I assist you today?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I assist you today?"
+        }
+      ]
+    },
+    {
+      "id": "status-public-nonstream",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I assist you today? If you have any questions or need help with something specific, feel free to let me know.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I assist you today? If you have any questions or need help with something specific, feel free to let me know."
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 30,
+        "completion_tokens": 29,
+        "total_tokens": 59
+      }
+    },
+    {
+      "id": "status-public-qwen2",
+      "title": "Hi",
+      "transcript": "user: hi\nassistant: Hello! How can I help you today? Is there anything specific you'd like to know or discuss?",
+      "messages": [
+        {
+          "role": "user",
+          "content": "hi"
+        },
+        {
+          "role": "assistant",
+          "content": "Hello! How can I help you today? Is there anything specific you'd like to know or discuss?"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 30,
+        "completion_tokens": 22,
+        "total_tokens": 52
+      }
+    }
+  ],
+  "notes": [],
+  "artifacts": [],
+  "agents": [],
+  "files": [],
+  "knowledgeBases": [],
+  "knowledgeIndexes": [],
+  "skills": [],
+  "memories": [],
+  "webhooks": [],
+  "toolServers": []
 }
