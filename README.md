@@ -614,20 +614,29 @@ qwen-omega kb query --settings ./settings.json release
 
 # Search the web and save result pages to knowledge
 qwen-omega web-search --list-providers
-qwen-omega web-search --engine-url 'http://127.0.0.1:8000/search?q={query}' \
+qwen-omega web-search --provider duckduckgo \
   --save-to-knowledge --base-id release-search release ./release-search-index.json
 
 # Use a provider-aware JSON search API
+export QWEN_EXTERNAL_SEARCH_ALLOWED_HOSTS=search.example.com
 qwen-omega web-search --provider external \
-  --engine-url 'http://127.0.0.1:8000/search' \
+  --engine-url 'https://search.example.com/search' \
   --save-to-knowledge --base-id release-search release ./release-search-index.json
 
 # Merge results across fallback providers
 qwen-omega web-search --provider external \
   --fallback-provider brave \
-  --engine-url 'http://127.0.0.1:8000/search' \
+  --engine-url 'https://search.example.com/search' \
   release
 ```
+
+Remote web retrieval accepts only HTTP(S) URLs that resolve to public IP
+addresses; loopback, private, link-local, reserved, credential-bearing, and
+unsafe redirect targets are rejected. An external search endpoint that receives
+an API key must be listed in `QWEN_EXTERNAL_SEARCH_ALLOWED_HOSTS`. Browser API
+sync/watch requests never choose an arbitrary filesystem destination: exports
+are written beneath `<settings-directory>/knowledge-exports`. Webhook share and
+dry-run output omits secret values.
 
 ---
 

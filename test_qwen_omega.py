@@ -180,35 +180,62 @@ class TestQwenOmega(unittest.TestCase):
             "modelProviders": valid["modelProviders"],
             "agents": [
                 {"id": "mentor", "name": "Mentor", "baseModel": "qwen3-coder:latest"},
-                {"id": "mentor", "name": "Duplicate", "baseModel": "qwen3-coder:latest"},
+                {
+                    "id": "mentor",
+                    "name": "Duplicate",
+                    "baseModel": "qwen3-coder:latest",
+                },
             ],
         }
-        self.assertTrue(any("duplicate agent id" in e for e in qo.validate_settings(duplicate_agent)))
+        self.assertTrue(
+            any(
+                "duplicate agent id" in e for e in qo.validate_settings(duplicate_agent)
+            )
+        )
 
         duplicate_skill = {
             "$version": 4,
             "modelProviders": valid["modelProviders"],
             "skills": [
-                {"id": "planning", "name": "Planning", "content": "Help organize work."},
+                {
+                    "id": "planning",
+                    "name": "Planning",
+                    "content": "Help organize work.",
+                },
                 {"id": "planning", "name": "Duplicate", "content": "Duplicate."},
             ],
         }
-        self.assertTrue(any("duplicate skill id" in e for e in qo.validate_settings(duplicate_skill)))
+        self.assertTrue(
+            any(
+                "duplicate skill id" in e for e in qo.validate_settings(duplicate_skill)
+            )
+        )
 
         duplicate_file = {
             "$version": 4,
             "modelProviders": valid["modelProviders"],
             "files": [
-                {"id": "handoff", "name": "Handoff", "content": "This is the handoff file."},
+                {
+                    "id": "handoff",
+                    "name": "Handoff",
+                    "content": "This is the handoff file.",
+                },
                 {"id": "handoff", "name": "Duplicate", "content": "Duplicate."},
             ],
         }
-        self.assertTrue(any("duplicate file id" in e for e in qo.validate_settings(duplicate_file)))
+        self.assertTrue(
+            any("duplicate file id" in e for e in qo.validate_settings(duplicate_file))
+        )
 
         invalid_context = dict(valid)
-        invalid_context["conversations"] = [dict(valid["conversations"][0], clearContextIndex=-1)]
+        invalid_context["conversations"] = [
+            dict(valid["conversations"][0], clearContextIndex=-1)
+        ]
         self.assertTrue(
-            any("clearContextIndex must be a non-negative integer" in e for e in qo.validate_settings(invalid_context))
+            any(
+                "clearContextIndex must be a non-negative integer" in e
+                for e in qo.validate_settings(invalid_context)
+            )
         )
 
     def test_normalize_existing_providers(self):
@@ -320,7 +347,10 @@ class TestQwenOmega(unittest.TestCase):
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
-        self.assertIn("Generate and validate production-grade Qwen Code configuration", buf.getvalue())
+        self.assertIn(
+            "Generate and validate production-grade Qwen Code configuration",
+            buf.getvalue(),
+        )
 
     def test_providers_add_all(self):
         settings_path = self.tmp_path / "settings.json"
@@ -347,7 +377,9 @@ class TestQwenOmega(unittest.TestCase):
             encoding="utf-8",
         )
         parser = qo.build_parser()
-        args = parser.parse_args(["providers", "add", "all", "--settings", str(settings_path)])
+        args = parser.parse_args(
+            ["providers", "add", "all", "--settings", str(settings_path)]
+        )
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         updated = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -358,7 +390,10 @@ class TestQwenOmega(unittest.TestCase):
             1 + len(qo.PRESETS),
         )
         self.assertTrue(
-            any(item["id"] == "openrouter-provider" for item in updated["modelProviders"]["openai"])
+            any(
+                item["id"] == "openrouter-provider"
+                for item in updated["modelProviders"]["openai"]
+            )
         )
         self.assertEqual(
             updated["security"]["auth"]["adminEmails"],
@@ -423,8 +458,12 @@ class TestQwenOmega(unittest.TestCase):
         updated = json.loads(buf.getvalue())
         openai_models = updated["modelProviders"]["openai"]
         self.assertTrue(any(item["id"] == "openrouter/free" for item in openai_models))
-        self.assertTrue(any(item["id"] == "openai/gpt-oss-20b" for item in openai_models))
-        self.assertTrue(any(item["id"] == "qwen3-coder:latest" for item in openai_models))
+        self.assertTrue(
+            any(item["id"] == "openai/gpt-oss-20b" for item in openai_models)
+        )
+        self.assertTrue(
+            any(item["id"] == "qwen3-coder:latest" for item in openai_models)
+        )
 
     def test_install_coder_auto_detects_nextchat_from_base_url(self):
         args = argparse.Namespace(
@@ -529,7 +568,7 @@ class TestQwenOmega(unittest.TestCase):
                                 "name": "Qwen 3 Coder Mini",
                                 "baseUrl": f"http://127.0.0.1:{upstream.server_address[1]}/v1",
                                 "envKey": "TEST_API_KEY",
-                            }
+                            },
                         ]
                     },
                     "promptTemplates": [
@@ -651,7 +690,9 @@ class TestQwenOmega(unittest.TestCase):
         base_url = f"http://127.0.0.1:{server.server_address[1]}"
         models = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/models").read())
         self.assertEqual(models["object"], "list")
-        self.assertTrue(any(item["id"] == "qwen3-coder:latest" for item in models["data"]))
+        self.assertTrue(
+            any(item["id"] == "qwen3-coder:latest" for item in models["data"])
+        )
 
         html = urllib.request.urlopen(f"{base_url}/ai.html").read().decode("utf-8")
         self.assertIn("Qwen Gen Chat", html)
@@ -667,7 +708,10 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("Stop", html)
         self.assertIn("toggle-sidebar", html)
         self.assertIn("Collapse sidebar", html)
-        self.assertIn("sidebarCollapsed: localStorage.getItem('qwen-gen.chat.sidebarPreference') === 'collapsed'", html)
+        self.assertIn(
+            "sidebarCollapsed: localStorage.getItem('qwen-gen.chat.sidebarPreference') === 'collapsed'",
+            html,
+        )
         self.assertIn("theme-toggle", html)
         self.assertIn("Theme: Dark", html)
         self.assertIn("shortcuts-help", html)
@@ -688,7 +732,7 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("dashboard-recent-chats", html)
         self.assertIn("dashboard-resource-list", html)
         self.assertIn("Models → fallback → chat", html)
-        self.assertIn("data-dashboard-target=\"kb-query\"", html)
+        self.assertIn('data-dashboard-target="kb-query"', html)
         self.assertIn("dashboardNewChat", html)
         self.assertIn("Providers", html)
         self.assertIn("Add presets", html)
@@ -844,7 +888,9 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("No model is selected yet.", html)
         self.assertIn("Add a model first, then ask Qwen something", html)
         self.assertIn("Compare mode needs two models", html)
-        self.assertIn("Add one more provider preset to enable side-by-side comparison", html)
+        self.assertIn(
+            "Add one more provider preset to enable side-by-side comparison", html
+        )
         self.assertIn("Compare mode needs a different second model", html)
         self.assertIn("Choose another model in the compare selector", html)
         self.assertIn("needs different model", html)
@@ -963,14 +1009,20 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("Context cleared above.", html)
         self.assertIn("Revert", html)
 
-        manifest = json.loads(urllib.request.urlopen(f"{base_url}/manifest.webmanifest").read())
+        manifest = json.loads(
+            urllib.request.urlopen(f"{base_url}/manifest.webmanifest").read()
+        )
         self.assertEqual(manifest["name"], "Qwen Gen Chat")
         self.assertEqual(manifest["scope"], "/")
         self.assertTrue(manifest["icons"])
-        head_req = urllib.request.Request(f"{base_url}/manifest.webmanifest", method="HEAD")
+        head_req = urllib.request.Request(
+            f"{base_url}/manifest.webmanifest", method="HEAD"
+        )
         with urllib.request.urlopen(head_req) as response:
             self.assertEqual(response.status, 200)
-            self.assertEqual(response.headers.get_content_type(), "application/manifest+json")
+            self.assertEqual(
+                response.headers.get_content_type(), "application/manifest+json"
+            )
 
         sw = urllib.request.urlopen(f"{base_url}/sw.js").read().decode("utf-8")
         self.assertIn("qwen-gen-chat-v2", sw)
@@ -978,12 +1030,20 @@ class TestQwenOmega(unittest.TestCase):
         head_req = urllib.request.Request(f"{base_url}/sw.js", method="HEAD")
         with urllib.request.urlopen(head_req) as response:
             self.assertEqual(response.status, 200)
-            self.assertEqual(response.headers.get_content_type(), "application/javascript")
+            self.assertEqual(
+                response.headers.get_content_type(), "application/javascript"
+            )
 
-        icon = urllib.request.urlopen(f"{base_url}/qwen-gen-icon.svg").read().decode("utf-8")
+        icon = (
+            urllib.request.urlopen(f"{base_url}/qwen-gen-icon.svg")
+            .read()
+            .decode("utf-8")
+        )
         self.assertIn("<svg", icon)
         self.assertIn("Qwen Gen", icon)
-        head_req = urllib.request.Request(f"{base_url}/qwen-gen-icon.svg", method="HEAD")
+        head_req = urllib.request.Request(
+            f"{base_url}/qwen-gen-icon.svg", method="HEAD"
+        )
         with urllib.request.urlopen(head_req) as response:
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers.get_content_type(), "image/svg+xml")
@@ -1035,7 +1095,9 @@ class TestQwenOmega(unittest.TestCase):
                 )
             ).read()
         )
-        self.assertTrue(any(item["id"] == "browser-file" for item in file_import["data"]["files"]))
+        self.assertTrue(
+            any(item["id"] == "browser-file" for item in file_import["data"]["files"])
+        )
         file_export = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1086,7 +1148,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/files",
-                    data=json.dumps({"action": "delete", "id": uploaded["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": uploaded["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1113,13 +1177,19 @@ class TestQwenOmega(unittest.TestCase):
                 )
             ).read()
         )
-        self.assertEqual(chat_response["choices"][0]["message"]["content"], "echo: Hello")
+        self.assertEqual(
+            chat_response["choices"][0]["message"]["content"], "echo: Hello"
+        )
         self.assertTrue(upstream_requests)
         self.assertEqual(upstream_requests[0]["model"], "qwen3-coder:latest")
         self.assertGreaterEqual(len(upstream_requests[0]["messages"]), 2)
-        self.assertTrue(upstream_requests[0]["messages"][0]["content"].startswith("Attached files:"))
+        self.assertTrue(
+            upstream_requests[0]["messages"][0]["content"].startswith("Attached files:")
+        )
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        conversation = next(item for item in persisted["conversations"] if item["id"] == "demo-chat")
+        conversation = next(
+            item for item in persisted["conversations"] if item["id"] == "demo-chat"
+        )
         self.assertEqual(conversation["title"], "Demo chat")
         self.assertEqual(conversation["systemPrompt"], "Be brief.")
         self.assertEqual(conversation["files"], ["handoff"])
@@ -1135,7 +1205,10 @@ class TestQwenOmega(unittest.TestCase):
                             "conversationId": "auto-title-chat",
                             "model": "qwen3-coder:latest",
                             "messages": [
-                                {"role": "user", "content": "plan terraform cloudflare for qwen.zeaz.dev"}
+                                {
+                                    "role": "user",
+                                    "content": "plan terraform cloudflare for qwen.zeaz.dev",
+                                }
                             ],
                         }
                     ).encode("utf-8"),
@@ -1144,10 +1217,20 @@ class TestQwenOmega(unittest.TestCase):
                 )
             ).read()
         )
-        self.assertEqual(auto_title_response["choices"][0]["message"]["content"], "echo: plan terraform cloudflare for qwen.zeaz.dev")
+        self.assertEqual(
+            auto_title_response["choices"][0]["message"]["content"],
+            "echo: plan terraform cloudflare for qwen.zeaz.dev",
+        )
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        auto_title_conversation = next(item for item in persisted["conversations"] if item["id"] == "auto-title-chat")
-        self.assertEqual(auto_title_conversation["title"], "Plan terraform cloudflare for qwen.zeaz.dev")
+        auto_title_conversation = next(
+            item
+            for item in persisted["conversations"]
+            if item["id"] == "auto-title-chat"
+        )
+        self.assertEqual(
+            auto_title_conversation["title"],
+            "Plan terraform cloudflare for qwen.zeaz.dev",
+        )
 
         compare_response = json.loads(
             urllib.request.urlopen(
@@ -1167,13 +1250,21 @@ class TestQwenOmega(unittest.TestCase):
                 )
             ).read()
         )
-        self.assertIn("qwen3-coder:latest", compare_response["choices"][0]["message"]["content"])
-        self.assertIn("qwen3-coder:mini", compare_response["choices"][0]["message"]["content"])
+        self.assertIn(
+            "qwen3-coder:latest", compare_response["choices"][0]["message"]["content"]
+        )
+        self.assertIn(
+            "qwen3-coder:mini", compare_response["choices"][0]["message"]["content"]
+        )
         self.assertEqual(len(compare_response["comparison"]), 2)
-        self.assertEqual(compare_response["comparison"][0]["model"], "qwen3-coder:latest")
+        self.assertEqual(
+            compare_response["comparison"][0]["model"], "qwen3-coder:latest"
+        )
         self.assertEqual(compare_response["comparison"][1]["model"], "qwen3-coder:mini")
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        compare_conversation = next(item for item in persisted["conversations"] if item["id"] == "compare-chat")
+        compare_conversation = next(
+            item for item in persisted["conversations"] if item["id"] == "compare-chat"
+        )
         self.assertEqual(compare_conversation["compareModels"], ["qwen3-coder:mini"])
 
         fallback_settings = {
@@ -1189,13 +1280,13 @@ class TestQwenOmega(unittest.TestCase):
                         "baseUrl": "http://127.0.0.1:11434/v1",
                     },
                 ]
-            }
+            },
         }
 
         def fake_single(settings, model_id, messages, payload, insecure=False):
             if model_id == "qwen3-coder:latest":
                 raise qo.RequestError(
-                    "HTTP 404 from http://127.0.0.1:11434/v1/chat/completions: {\"error\":{\"message\":\"model 'qwen3-coder:latest' not found\"}}"
+                    'HTTP 404 from http://127.0.0.1:11434/v1/chat/completions: {"error":{"message":"model \'qwen3-coder:latest\' not found"}}'
                 )
             self.assertEqual(model_id, "deepseek-coder:latest")
             return {
@@ -1214,7 +1305,9 @@ class TestQwenOmega(unittest.TestCase):
                 "providerName": "OpenAI",
             }
 
-        with unittest.mock.patch.object(qo, "_CHAT_COMPLETION_SINGLE", side_effect=fake_single):
+        with unittest.mock.patch.object(
+            qo, "_CHAT_COMPLETION_SINGLE", side_effect=fake_single
+        ):
             fallback_response = qo._chat_completion(
                 fallback_settings,
                 "qwen3-coder:latest",
@@ -1222,7 +1315,9 @@ class TestQwenOmega(unittest.TestCase):
                 {},
             )
         self.assertEqual(fallback_response["model"], "deepseek-coder:latest")
-        self.assertEqual(fallback_response["choices"][0]["message"]["content"], "echo: fallback")
+        self.assertEqual(
+            fallback_response["choices"][0]["message"]["content"], "echo: fallback"
+        )
 
         def fake_transient(settings, model_id, messages, payload, insecure=False):
             if model_id == "qwen3-coder:latest":
@@ -1243,7 +1338,9 @@ class TestQwenOmega(unittest.TestCase):
                 "providerName": "OpenAI",
             }
 
-        with unittest.mock.patch.object(qo, "_CHAT_COMPLETION_SINGLE", side_effect=fake_transient):
+        with unittest.mock.patch.object(
+            qo, "_CHAT_COMPLETION_SINGLE", side_effect=fake_transient
+        ):
             transient_response = qo._chat_completion(
                 fallback_settings,
                 "qwen3-coder:latest",
@@ -1251,7 +1348,9 @@ class TestQwenOmega(unittest.TestCase):
                 {},
             )
         self.assertEqual(transient_response["model"], "deepseek-coder:latest")
-        self.assertEqual(transient_response["choices"][0]["message"]["content"], "echo: retry")
+        self.assertEqual(
+            transient_response["choices"][0]["message"]["content"], "echo: retry"
+        )
 
         state_response = json.loads(
             urllib.request.urlopen(
@@ -1277,7 +1376,9 @@ class TestQwenOmega(unittest.TestCase):
         self.assertEqual(state_response["data"]["archived"], True)
         self.assertEqual(state_response["data"]["folderId"], "project-alpha")
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        state_conversation = next(item for item in persisted["conversations"] if item["id"] == "state-chat")
+        state_conversation = next(
+            item for item in persisted["conversations"] if item["id"] == "state-chat"
+        )
         self.assertEqual(state_conversation["pinned"], True)
         self.assertEqual(state_conversation["archived"], True)
         self.assertEqual(state_conversation["folderId"], "project-alpha")
@@ -1299,13 +1400,19 @@ class TestQwenOmega(unittest.TestCase):
             ).read()
         )
         self.assertEqual(folder_response["data"]["id"], "project-beta")
-        folder_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/folders").read())
-        self.assertTrue(any(item["id"] == "project-beta" for item in folder_list["data"]))
+        folder_list = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/folders").read()
+        )
+        self.assertTrue(
+            any(item["id"] == "project-beta" for item in folder_list["data"])
+        )
         folder_delete = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/folders",
-                    data=json.dumps({"action": "delete", "id": "project-beta"}).encode("utf-8"),
+                    data=json.dumps({"action": "delete", "id": "project-beta"}).encode(
+                        "utf-8"
+                    ),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1313,7 +1420,9 @@ class TestQwenOmega(unittest.TestCase):
         )
         self.assertEqual(folder_delete["deleted"], "project-beta")
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertFalse(any(item["id"] == "project-beta" for item in persisted["folders"]))
+        self.assertFalse(
+            any(item["id"] == "project-beta" for item in persisted["folders"])
+        )
 
         conversation_import = json.loads(
             urllib.request.urlopen(
@@ -1341,7 +1450,10 @@ class TestQwenOmega(unittest.TestCase):
             ).read()
         )
         self.assertTrue(
-            any(item["id"] == "browser-import" for item in conversation_import["data"]["conversations"])
+            any(
+                item["id"] == "browser-import"
+                for item in conversation_import["data"]["conversations"]
+            )
         )
         conversation_export = json.loads(
             urllib.request.urlopen(
@@ -1358,24 +1470,33 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/conversations",
-                    data=json.dumps({"action": "share", "id": "planning", "format": "md"}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "share", "id": "planning", "format": "md"}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
             ).read()
         )
-        self.assertIn("assistant: Plan the release.", conversation_share_md["data"]["content"])
+        self.assertIn(
+            "assistant: Plan the release.", conversation_share_md["data"]["content"]
+        )
         conversation_share_html = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/conversations",
-                    data=json.dumps({"action": "share", "id": "planning", "format": "html"}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "share", "id": "planning", "format": "html"}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
             ).read()
         )
-        self.assertIn("data-conversation-id=\"planning\"", conversation_share_html["data"]["content"])
+        self.assertIn(
+            'data-conversation-id="planning"',
+            conversation_share_html["data"]["content"],
+        )
         conversation_clone = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1393,7 +1514,9 @@ class TestQwenOmega(unittest.TestCase):
                 )
             ).read()
         )
-        self.assertEqual(conversation_clone["data"]["conversation"]["id"], "planning-browser-copy")
+        self.assertEqual(
+            conversation_clone["data"]["conversation"]["id"], "planning-browser-copy"
+        )
 
         agent_import = json.loads(
             urllib.request.urlopen(
@@ -1421,7 +1544,11 @@ class TestQwenOmega(unittest.TestCase):
                 )
             ).read()
         )
-        self.assertTrue(any(item["id"] == "browser-agent" for item in agent_import["data"]["agents"]))
+        self.assertTrue(
+            any(
+                item["id"] == "browser-agent" for item in agent_import["data"]["agents"]
+            )
+        )
         agent_export = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1437,7 +1564,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/agents",
-                    data=json.dumps({"action": "share", "id": "mentor", "format": "json"}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "share", "id": "mentor", "format": "json"}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1465,8 +1594,15 @@ class TestQwenOmega(unittest.TestCase):
         self.assertEqual(agent_clone["data"]["agent"]["id"], "mentor-browser-copy")
 
         kb_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/kb").read())
-        self.assertTrue(any(item["id"] == "docs" for item in kb_list["data"]["knowledgeBases"]))
-        self.assertTrue(any(item["id"] == "docs-index" for item in kb_list["data"]["knowledgeIndexes"]))
+        self.assertTrue(
+            any(item["id"] == "docs" for item in kb_list["data"]["knowledgeBases"])
+        )
+        self.assertTrue(
+            any(
+                item["id"] == "docs-index"
+                for item in kb_list["data"]["knowledgeIndexes"]
+            )
+        )
         imported_kb = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1503,9 +1639,17 @@ class TestQwenOmega(unittest.TestCase):
                 )
             ).read()
         )
-        self.assertTrue(any(item["id"] == "imported-docs" for item in imported_kb["data"]["knowledgeBases"]))
         self.assertTrue(
-            any(item["id"] == "imported-docs-index" for item in imported_kb["data"]["knowledgeIndexes"])
+            any(
+                item["id"] == "imported-docs"
+                for item in imported_kb["data"]["knowledgeBases"]
+            )
+        )
+        self.assertTrue(
+            any(
+                item["id"] == "imported-docs-index"
+                for item in imported_kb["data"]["knowledgeIndexes"]
+            )
         )
         exported_kb = json.loads(
             urllib.request.urlopen(
@@ -1518,8 +1662,15 @@ class TestQwenOmega(unittest.TestCase):
             ).read()
         )
         self.assertIn("Imported Docs", exported_kb["data"]["content"])
-        web_search_meta = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/web-search").read())
-        self.assertTrue(any(item["id"] == "duckduckgo" for item in web_search_meta["data"]["providers"]))
+        web_search_meta = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/web-search").read()
+        )
+        self.assertTrue(
+            any(
+                item["id"] == "duckduckgo"
+                for item in web_search_meta["data"]["providers"]
+            )
+        )
         self.assertEqual(web_search_meta["data"]["defaultProvider"], "duckduckgo")
         web_search_results = [
             {
@@ -1553,12 +1704,15 @@ class TestQwenOmega(unittest.TestCase):
                 "size": 123,
             },
         }
-        with unittest.mock.patch(
-            "qwen_omega.fetch_web_search_results_chain",
-            return_value=web_search_results,
-        ), unittest.mock.patch(
-            "qwen_omega.fetch_web_document",
-            side_effect=lambda url, timeout: web_search_docs[url],
+        with (
+            unittest.mock.patch(
+                "qwen_omega.fetch_web_search_results_chain",
+                return_value=web_search_results,
+            ),
+            unittest.mock.patch(
+                "qwen_omega.fetch_web_document",
+                side_effect=lambda url, timeout: web_search_docs[url],
+            ),
         ):
             web_search_response = json.loads(
                 urllib.request.urlopen(
@@ -1596,10 +1750,19 @@ class TestQwenOmega(unittest.TestCase):
                     )
                 ).read()
             )
-        self.assertEqual(saved_web_search["data"]["knowledgeIndex"]["baseId"], "search-release")
+        self.assertEqual(
+            saved_web_search["data"]["knowledgeIndex"]["baseId"], "search-release"
+        )
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "search-release" for item in persisted["knowledgeBases"]))
-        self.assertTrue(any(item["baseId"] == "search-release" for item in persisted["knowledgeIndexes"]))
+        self.assertTrue(
+            any(item["id"] == "search-release" for item in persisted["knowledgeBases"])
+        )
+        self.assertTrue(
+            any(
+                item["baseId"] == "search-release"
+                for item in persisted["knowledgeIndexes"]
+            )
+        )
         kb_query = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1633,7 +1796,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/kb",
-                    data=json.dumps({"action": "refresh", "baseId": "docs"}).encode("utf-8"),
+                    data=json.dumps({"action": "refresh", "baseId": "docs"}).encode(
+                        "utf-8"
+                    ),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1659,8 +1824,11 @@ class TestQwenOmega(unittest.TestCase):
             ).read()
         )
         self.assertIn("docs", synced_kb["data"]["refreshed"])
-        self.assertTrue((sync_output_dir / "docs.json").exists())
-        self.assertTrue((sync_output_dir / "manifest.json").exists())
+        safe_sync_output_dir = settings_path.parent / "knowledge-exports"
+        self.assertTrue((safe_sync_output_dir / "docs.json").exists())
+        self.assertTrue((safe_sync_output_dir / "manifest.json").exists())
+        self.assertFalse((sync_output_dir / "docs.json").exists())
+        self.assertFalse((sync_output_dir / "manifest.json").exists())
         knowledge_source_file.write_text(
             "# Release Notes\nUpdated watch content with browser sync.\n",
             encoding="utf-8",
@@ -1685,9 +1853,19 @@ class TestQwenOmega(unittest.TestCase):
             ).read()
         )
         self.assertIn("docs", watched_kb["data"]["refreshed"])
-        watched_index = json.loads((watch_output_dir / "docs.json").read_text(encoding="utf-8"))
-        self.assertIn("Updated watch content with browser sync", watched_index["documents"][0]["chunks"][0]["text"])
-        self.assertTrue((watch_output_dir / "manifest.json").exists())
+        watched_index = json.loads(
+            (settings_path.parent / "knowledge-exports" / "docs.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn(
+            "Updated watch content with browser sync",
+            watched_index["documents"][0]["chunks"][0]["text"],
+        )
+        self.assertTrue(
+            (settings_path.parent / "knowledge-exports" / "manifest.json").exists()
+        )
+        self.assertFalse((watch_output_dir / "manifest.json").exists())
         refreshed_query = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1699,10 +1877,15 @@ class TestQwenOmega(unittest.TestCase):
             ).read()
         )
         self.assertTrue(refreshed_query["data"])
-        self.assertIn("Updated watch content with browser sync", refreshed_query["data"][0]["snippet"])
+        self.assertIn(
+            "Updated watch content with browser sync",
+            refreshed_query["data"][0]["snippet"],
+        )
 
         kb_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/kb").read())
-        self.assertTrue(any(item["id"] == "docs" for item in kb_list["data"]["knowledgeBases"]))
+        self.assertTrue(
+            any(item["id"] == "docs" for item in kb_list["data"]["knowledgeBases"])
+        )
         saved_kb = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1724,7 +1907,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/kb",
-                    data=json.dumps({"action": "delete", "id": saved_kb["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": saved_kb["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1732,7 +1917,9 @@ class TestQwenOmega(unittest.TestCase):
         )
         self.assertEqual(deleted_kb["deleted"], saved_kb["data"]["id"])
 
-        tools_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/tools").read())
+        tools_list = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/tools").read()
+        )
         self.assertTrue(any(item["id"] == "search" for item in tools_list["data"]))
         saved_tool = json.loads(
             urllib.request.urlopen(
@@ -1756,7 +1943,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/tools",
-                    data=json.dumps({"action": "delete", "id": saved_tool["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": saved_tool["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1764,7 +1953,9 @@ class TestQwenOmega(unittest.TestCase):
         )
         self.assertEqual(deleted_tool["deleted"], saved_tool["data"]["id"])
 
-        agents_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/agents").read())
+        agents_list = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/agents").read()
+        )
         self.assertTrue(any(item["id"] == "mentor" for item in agents_list["data"]))
         saved_agent = json.loads(
             urllib.request.urlopen(
@@ -1794,14 +1985,18 @@ class TestQwenOmega(unittest.TestCase):
         self.assertEqual(saved_agent["data"]["tools"], ["browser-tool"])
         self.assertEqual(saved_agent["data"]["knowledge"], ["kb-1"])
         self.assertEqual(saved_agent["data"]["skills"], ["planning"])
-        self.assertEqual(saved_agent["data"]["avatar"], "https://example.com/avatar.png")
+        self.assertEqual(
+            saved_agent["data"]["avatar"], "https://example.com/avatar.png"
+        )
         self.assertEqual(saved_agent["data"]["voice"], "echo")
         self.assertEqual(saved_agent["data"]["visibility"], "private")
         deleted_agent = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/agents",
-                    data=json.dumps({"action": "delete", "id": saved_agent["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": saved_agent["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1809,10 +2004,16 @@ class TestQwenOmega(unittest.TestCase):
         )
         self.assertEqual(deleted_agent["deleted"], saved_agent["data"]["id"])
 
-        skills_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/skills").read())
+        skills_list = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/skills").read()
+        )
         self.assertTrue(any(item["id"] == "planning" for item in skills_list["data"]))
-        webhooks_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/webhooks").read())
-        self.assertTrue(any(item["id"] == "ops-alerts" for item in webhooks_list["data"]))
+        webhooks_list = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/webhooks").read()
+        )
+        self.assertTrue(
+            any(item["id"] == "ops-alerts" for item in webhooks_list["data"])
+        )
         saved_webhook = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1835,15 +2036,21 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/webhooks",
-                    data=json.dumps({"action": "delete", "id": saved_webhook["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": saved_webhook["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
             ).read()
         )
         self.assertEqual(deleted_webhook["deleted"], saved_webhook["data"]["id"])
-        memories_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/memories").read())
-        self.assertTrue(any(item["id"] == "preferences" for item in memories_list["data"]))
+        memories_list = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/memories").read()
+        )
+        self.assertTrue(
+            any(item["id"] == "preferences" for item in memories_list["data"])
+        )
         saved_memory = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1865,7 +2072,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/memories",
-                    data=json.dumps({"action": "delete", "id": saved_memory["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": saved_memory["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1910,7 +2119,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/skills",
-                    data=json.dumps({"action": "delete", "id": saved_skill["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": saved_skill["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1918,7 +2129,9 @@ class TestQwenOmega(unittest.TestCase):
         )
         self.assertEqual(deleted_skill["deleted"], saved_skill["data"]["id"])
 
-        notes_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/notes").read())
+        notes_list = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/notes").read()
+        )
         self.assertTrue(any(item["id"] == "review" for item in notes_list["data"]))
         saved_note = json.loads(
             urllib.request.urlopen(
@@ -1940,15 +2153,21 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/notes",
-                    data=json.dumps({"action": "delete", "id": saved_note["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": saved_note["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
             ).read()
         )
         self.assertEqual(deleted_note["deleted"], saved_note["data"]["id"])
-        artifacts_list = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/artifacts").read())
-        self.assertTrue(any(item["id"] == "release-notes" for item in artifacts_list["data"]))
+        artifacts_list = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/artifacts").read()
+        )
+        self.assertTrue(
+            any(item["id"] == "release-notes" for item in artifacts_list["data"])
+        )
         saved_artifact = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
@@ -1970,7 +2189,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/artifacts",
-                    data=json.dumps({"action": "delete", "id": saved_artifact["data"]["id"]}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete", "id": saved_artifact["data"]["id"]}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -1990,21 +2211,33 @@ class TestQwenOmega(unittest.TestCase):
         )
         self.assertTrue(providers_response["ok"])
         self.assertIn("openai", providers_response["data"])
-        provider_models = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/models").read())
-        self.assertTrue(any(item["id"] == "openrouter-provider" for item in provider_models["data"]))
+        provider_models = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/models").read()
+        )
+        self.assertTrue(
+            any(item["id"] == "openrouter-provider" for item in provider_models["data"])
+        )
         provider_delete = json.loads(
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/providers",
-                    data=json.dumps({"action": "delete-model", "id": "openrouter-provider"}).encode("utf-8"),
+                    data=json.dumps(
+                        {"action": "delete-model", "id": "openrouter-provider"}
+                    ).encode("utf-8"),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
             ).read()
         )
         self.assertTrue(provider_delete["ok"])
-        refreshed_models = json.loads(urllib.request.urlopen(f"{base_url}/api/ai/models").read())
-        self.assertFalse(any(item["id"] == "openrouter-provider" for item in refreshed_models["data"]))
+        refreshed_models = json.loads(
+            urllib.request.urlopen(f"{base_url}/api/ai/models").read()
+        )
+        self.assertFalse(
+            any(
+                item["id"] == "openrouter-provider" for item in refreshed_models["data"]
+            )
+        )
 
         sort_path = self.tmp_path / "sort-settings.json"
         sort_path.write_text(
@@ -2023,9 +2256,23 @@ class TestQwenOmega(unittest.TestCase):
                         ]
                     },
                     "conversations": [
-                        {"id": "zeta", "title": "Zeta", "transcript": "assistant: zeta"},
-                        {"id": "alpha", "title": "Alpha", "transcript": "assistant: alpha", "pinned": True},
-                        {"id": "beta", "title": "Beta", "transcript": "assistant: beta", "archived": True},
+                        {
+                            "id": "zeta",
+                            "title": "Zeta",
+                            "transcript": "assistant: zeta",
+                        },
+                        {
+                            "id": "alpha",
+                            "title": "Alpha",
+                            "transcript": "assistant: alpha",
+                            "pinned": True,
+                        },
+                        {
+                            "id": "beta",
+                            "title": "Beta",
+                            "transcript": "assistant: beta",
+                            "archived": True,
+                        },
                     ],
                 }
             ),
@@ -2038,7 +2285,9 @@ class TestQwenOmega(unittest.TestCase):
         self.addCleanup(server.shutdown)
         self.addCleanup(server.server_close)
         base_url_sort = f"http://127.0.0.1:{server.server_address[1]}"
-        html_sort = urllib.request.urlopen(f"{base_url_sort}/ai.html").read().decode("utf-8")
+        html_sort = (
+            urllib.request.urlopen(f"{base_url_sort}/ai.html").read().decode("utf-8")
+        )
         self.assertIn("conversation-filter-all", html_sort)
         self.assertIn("conversation-filter-pinned", html_sort)
         self.assertIn("conversation-filter-archived", html_sort)
@@ -2066,7 +2315,9 @@ class TestQwenOmega(unittest.TestCase):
 
     def test_serve_state_prompt_template_upsert_and_delete(self):
         settings_path = self.tmp_path / "templates-settings.json"
-        settings_path.write_text(json.dumps({"$version": 4, "promptTemplates": []}), encoding="utf-8")
+        settings_path.write_text(
+            json.dumps({"$version": 4, "promptTemplates": []}), encoding="utf-8"
+        )
         state = qo.QwenChatState.load(settings_path)
         saved = state.upsert_prompt_template(
             {
@@ -2078,10 +2329,14 @@ class TestQwenOmega(unittest.TestCase):
         self.assertEqual(saved["name"], "Code Review")
         self.assertEqual(saved["content"], "Review this diff for bugs.")
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == saved["id"] for item in persisted["promptTemplates"]))
+        self.assertTrue(
+            any(item["id"] == saved["id"] for item in persisted["promptTemplates"])
+        )
         state.delete_prompt_template(saved["id"])
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertFalse(any(item["id"] == saved["id"] for item in persisted["promptTemplates"]))
+        self.assertFalse(
+            any(item["id"] == saved["id"] for item in persisted["promptTemplates"])
+        )
 
     def test_serve_state_folder_upsert_and_delete(self):
         settings_path = self.tmp_path / "folders-settings.json"
@@ -2111,12 +2366,16 @@ class TestQwenOmega(unittest.TestCase):
         self.assertTrue(any(item["id"] == saved["id"] for item in persisted["folders"]))
         state.delete_folder(saved["id"])
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertFalse(any(item["id"] == saved["id"] for item in persisted["folders"]))
+        self.assertFalse(
+            any(item["id"] == saved["id"] for item in persisted["folders"])
+        )
         self.assertEqual(persisted["conversations"][0].get("folderId", ""), "")
 
     def test_serve_api_folder_roundtrip(self):
         settings_path = self.tmp_path / "folder-api-settings.json"
-        settings_path.write_text(json.dumps({"$version": 4, "folders": []}), encoding="utf-8")
+        settings_path.write_text(
+            json.dumps({"$version": 4, "folders": []}), encoding="utf-8"
+        )
         server = qo.QwenChatHTTPServer(("127.0.0.1", 0), qo.QwenChatRequestHandler)
         server.state = qo.QwenChatState.load(settings_path)  # type: ignore[attr-defined]
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -2148,7 +2407,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/folders",
-                    data=json.dumps({"action": "delete", "id": folder["id"]}).encode("utf-8"),
+                    data=json.dumps({"action": "delete", "id": folder["id"]}).encode(
+                        "utf-8"
+                    ),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -2156,7 +2417,9 @@ class TestQwenOmega(unittest.TestCase):
         )
         self.assertTrue(deleted["ok"])
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertFalse(any(item["id"] == folder["id"] for item in persisted["folders"]))
+        self.assertFalse(
+            any(item["id"] == folder["id"] for item in persisted["folders"])
+        )
 
     def test_serve_state_provider_preset_add_and_delete(self):
         settings_path = self.tmp_path / "providers-settings.json"
@@ -2182,14 +2445,26 @@ class TestQwenOmega(unittest.TestCase):
         added = state.add_provider_presets()
         self.assertIn("openrouter", added)
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "openrouter-provider" for item in persisted["modelProviders"]["openai"]))
+        self.assertTrue(
+            any(
+                item["id"] == "openrouter-provider"
+                for item in persisted["modelProviders"]["openai"]
+            )
+        )
         self.assertTrue(state.delete_provider_model("openrouter-provider"))
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertFalse(any(item["id"] == "openrouter-provider" for item in persisted["modelProviders"]["openai"]))
+        self.assertFalse(
+            any(
+                item["id"] == "openrouter-provider"
+                for item in persisted["modelProviders"]["openai"]
+            )
+        )
 
     def test_serve_api_prompt_template_roundtrip(self):
         settings_path = self.tmp_path / "prompt-api-settings.json"
-        settings_path.write_text(json.dumps({"$version": 4, "promptTemplates": []}), encoding="utf-8")
+        settings_path.write_text(
+            json.dumps({"$version": 4, "promptTemplates": []}), encoding="utf-8"
+        )
         server = qo.QwenChatHTTPServer(("127.0.0.1", 0), qo.QwenChatRequestHandler)
         server.state = qo.QwenChatState.load(settings_path)  # type: ignore[attr-defined]
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -2221,7 +2496,9 @@ class TestQwenOmega(unittest.TestCase):
             urllib.request.urlopen(
                 urllib.request.Request(
                     f"{base_url}/api/ai/prompt-templates",
-                    data=json.dumps({"action": "delete", "id": template["id"]}).encode("utf-8"),
+                    data=json.dumps({"action": "delete", "id": template["id"]}).encode(
+                        "utf-8"
+                    ),
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
@@ -2229,7 +2506,9 @@ class TestQwenOmega(unittest.TestCase):
         )
         self.assertTrue(deleted["ok"])
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertFalse(any(item["id"] == template["id"] for item in persisted["promptTemplates"]))
+        self.assertFalse(
+            any(item["id"] == template["id"] for item in persisted["promptTemplates"])
+        )
 
     def test_serve_api_prompt_template_update_existing(self):
         settings_path = self.tmp_path / "prompt-api-update-settings.json"
@@ -2387,7 +2666,9 @@ class TestQwenOmega(unittest.TestCase):
         self.assertTrue(upstream_requests)
         self.assertTrue(upstream_requests[0]["stream"])
         persisted = json.loads(settings_path.read_text(encoding="utf-8"))
-        conversation = next(item for item in persisted["conversations"] if item["id"] == "stream-chat")
+        conversation = next(
+            item for item in persisted["conversations"] if item["id"] == "stream-chat"
+        )
         self.assertEqual(conversation["messages"][-1]["content"], "echo: Hello")
 
     def test_prompts_add_and_list(self):
@@ -2413,7 +2694,9 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("promptTemplates", saved)
         self.assertEqual(saved["promptTemplates"][0]["id"], "code-review")
         self.assertEqual(saved["promptTemplates"][0]["name"], "Code Review")
-        self.assertEqual(saved["promptTemplates"][0]["content"], "Review this diff for bugs.")
+        self.assertEqual(
+            saved["promptTemplates"][0]["content"], "Review this diff for bugs."
+        )
 
     def test_prompts_clone(self):
         settings_path = self.tmp_path / "prompts-clone.json"
@@ -2454,7 +2737,9 @@ class TestQwenOmega(unittest.TestCase):
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
         self.assertEqual(len(saved["promptTemplates"]), 2)
         clone = next(
-            item for item in saved["promptTemplates"] if item["id"] == "code-review-copy"
+            item
+            for item in saved["promptTemplates"]
+            if item["id"] == "code-review-copy"
         )
         self.assertEqual(clone["name"], "Code Review Copy")
         self.assertEqual(clone["content"], "Review this diff for bugs.")
@@ -2545,7 +2830,9 @@ class TestQwenOmega(unittest.TestCase):
 
         source_dir = self.tmp_path / "skills"
         source_dir.mkdir()
-        (source_dir / "review.md").write_text("# Review\nCheck the code for regressions.\n", encoding="utf-8")
+        (source_dir / "review.md").write_text(
+            "# Review\nCheck the code for regressions.\n", encoding="utf-8"
+        )
         args = parser.parse_args(
             [
                 "skills",
@@ -2630,7 +2917,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-skill-id=\"planning\"", rendered_html)
+        self.assertIn('data-skill-id="planning"', rendered_html)
         self.assertIn("Help organize the work.", rendered_html)
 
         args = parser.parse_args(
@@ -2651,7 +2938,9 @@ class TestQwenOmega(unittest.TestCase):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
         self.assertTrue(any(item["id"] == "planning-copy" for item in cloned["skills"]))
-        clone_item = next(item for item in cloned["skills"] if item["id"] == "planning-copy")
+        clone_item = next(
+            item for item in cloned["skills"] if item["id"] == "planning-copy"
+        )
         self.assertEqual(clone_item["name"], "Planning Copy")
         self.assertEqual(clone_item["content"], "Help organize the work.")
 
@@ -2754,7 +3043,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-plugin-id=\"search-booster\"", rendered_html)
+        self.assertIn('data-plugin-id="search-booster"', rendered_html)
         self.assertIn("Enhance search with external APIs.", rendered_html)
 
         args = parser.parse_args(
@@ -2774,8 +3063,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "search-booster-copy" for item in cloned["plugins"]))
-        clone_item = next(item for item in cloned["plugins"] if item["id"] == "search-booster-copy")
+        self.assertTrue(
+            any(item["id"] == "search-booster-copy" for item in cloned["plugins"])
+        )
+        clone_item = next(
+            item for item in cloned["plugins"] if item["id"] == "search-booster-copy"
+        )
         self.assertEqual(clone_item["name"], "Search Booster Copy")
         self.assertEqual(clone_item["content"], "Enhance search with external APIs.")
 
@@ -2853,7 +3146,9 @@ class TestQwenOmega(unittest.TestCase):
         )
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
-        self.assertIn("data-action-id=\"ticket-action\"", action_html.read_text(encoding="utf-8"))
+        self.assertIn(
+            'data-action-id="ticket-action"', action_html.read_text(encoding="utf-8")
+        )
 
         args = parser.parse_args(
             [
@@ -2872,8 +3167,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "safety-filter-copy" for item in cloned["filters"]))
-        clone_item = next(item for item in cloned["filters"] if item["id"] == "safety-filter-copy")
+        self.assertTrue(
+            any(item["id"] == "safety-filter-copy" for item in cloned["filters"])
+        )
+        clone_item = next(
+            item for item in cloned["filters"] if item["id"] == "safety-filter-copy"
+        )
         self.assertEqual(clone_item["name"], "Safety Filter Copy")
         self.assertEqual(clone_item["content"], "Block unsafe outputs before delivery.")
 
@@ -2894,8 +3193,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "ticket-action-copy" for item in cloned["actions"]))
-        clone_item = next(item for item in cloned["actions"] if item["id"] == "ticket-action-copy")
+        self.assertTrue(
+            any(item["id"] == "ticket-action-copy" for item in cloned["actions"])
+        )
+        clone_item = next(
+            item for item in cloned["actions"] if item["id"] == "ticket-action-copy"
+        )
         self.assertEqual(clone_item["name"], "Ticket Action Copy")
         self.assertEqual(
             clone_item["content"],
@@ -3001,7 +3304,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-automation-id=\"daily-summary\"", rendered_html)
+        self.assertIn('data-automation-id="daily-summary"', rendered_html)
         self.assertIn("Summarize the last 24 hours of work.", rendered_html)
 
         args = parser.parse_args(
@@ -3021,8 +3324,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "daily-summary-copy" for item in cloned["automations"]))
-        clone_item = next(item for item in cloned["automations"] if item["id"] == "daily-summary-copy")
+        self.assertTrue(
+            any(item["id"] == "daily-summary-copy" for item in cloned["automations"])
+        )
+        clone_item = next(
+            item for item in cloned["automations"] if item["id"] == "daily-summary-copy"
+        )
         self.assertEqual(clone_item["name"], "Daily Summary Copy")
         self.assertEqual(clone_item["prompt"], "Summarize the last 24 hours of work.")
 
@@ -3125,7 +3432,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-plugin-id=\"moderation\"", rendered_html)
+        self.assertIn('data-plugin-id="moderation"', rendered_html)
         self.assertIn("Review content before publishing.", rendered_html)
 
     def test_files_add_import_export_share(self):
@@ -3158,7 +3465,9 @@ class TestQwenOmega(unittest.TestCase):
 
         source_dir = self.tmp_path / "files"
         source_dir.mkdir()
-        (source_dir / "guide.md").write_text("# Guide\nRead this guide.\n", encoding="utf-8")
+        (source_dir / "guide.md").write_text(
+            "# Guide\nRead this guide.\n", encoding="utf-8"
+        )
         args = parser.parse_args(
             [
                 "files",
@@ -3223,7 +3532,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-file-id=\"handoff\"", rendered_html)
+        self.assertIn('data-file-id="handoff"', rendered_html)
         self.assertIn("Project handoff notes.", rendered_html)
 
         json_path = self.tmp_path / "file-share.json"
@@ -3263,7 +3572,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-file-id=\"handoff\"", rendered_html)
+        self.assertIn('data-file-id="handoff"', rendered_html)
         self.assertIn("Project handoff notes.", rendered_html)
 
         args = parser.parse_args(
@@ -3284,7 +3593,9 @@ class TestQwenOmega(unittest.TestCase):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
         self.assertTrue(any(item["id"] == "handoff-copy" for item in cloned["files"]))
-        clone_item = next(item for item in cloned["files"] if item["id"] == "handoff-copy")
+        clone_item = next(
+            item for item in cloned["files"] if item["id"] == "handoff-copy"
+        )
         self.assertEqual(clone_item["name"], "Handoff Copy")
         self.assertEqual(clone_item["content"], "This is the handoff file.")
 
@@ -3312,7 +3623,9 @@ class TestQwenOmega(unittest.TestCase):
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
         self.assertIn("toolServers", saved)
         self.assertEqual(saved["toolServers"][0]["id"], "search")
-        self.assertEqual(saved["toolServers"][0]["endpoint"], "http://127.0.0.1:3001/mcp")
+        self.assertEqual(
+            saved["toolServers"][0]["endpoint"], "http://127.0.0.1:3001/mcp"
+        )
 
     def test_tools_import_export(self):
         source_path = self.tmp_path / "tools-source.json"
@@ -3364,8 +3677,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "search-copy" for item in cloned["toolServers"]))
-        clone_item = next(item for item in cloned["toolServers"] if item["id"] == "search-copy")
+        self.assertTrue(
+            any(item["id"] == "search-copy" for item in cloned["toolServers"])
+        )
+        clone_item = next(
+            item for item in cloned["toolServers"] if item["id"] == "search-copy"
+        )
         self.assertEqual(clone_item["name"], "Search Copy")
         self.assertEqual(clone_item["endpoint"], "http://127.0.0.1:3001/mcp")
 
@@ -3382,7 +3699,9 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         exported = json.loads(out_path.read_text(encoding="utf-8"))
-        self.assertEqual(exported["toolServers"][0]["endpoint"], "http://127.0.0.1:3001/mcp")
+        self.assertEqual(
+            exported["toolServers"][0]["endpoint"], "http://127.0.0.1:3001/mcp"
+        )
 
     def test_kb_add_and_list(self):
         settings_path = self.tmp_path / "kb.json"
@@ -3425,9 +3744,13 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "product-docs-copy" for item in cloned["knowledgeBases"]))
+        self.assertTrue(
+            any(item["id"] == "product-docs-copy" for item in cloned["knowledgeBases"])
+        )
         clone_item = next(
-            item for item in cloned["knowledgeBases"] if item["id"] == "product-docs-copy"
+            item
+            for item in cloned["knowledgeBases"]
+            if item["id"] == "product-docs-copy"
         )
         self.assertEqual(clone_item["name"], "Product Docs Copy")
         self.assertEqual(clone_item["sourceDir"], "/tmp/docs")
@@ -3504,9 +3827,13 @@ class TestQwenOmega(unittest.TestCase):
         )
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
-        saved = json.loads((self.tmp_path / "kb-settings.json").read_text(encoding="utf-8"))
+        saved = json.loads(
+            (self.tmp_path / "kb-settings.json").read_text(encoding="utf-8")
+        )
         self.assertTrue(any(item["id"] == "kb-src" for item in saved["knowledgeBases"]))
-        self.assertTrue(any(item["baseId"] == "kb-src" for item in saved["knowledgeIndexes"]))
+        self.assertTrue(
+            any(item["baseId"] == "kb-src" for item in saved["knowledgeIndexes"])
+        )
         index = json.loads(index_path.read_text(encoding="utf-8"))
         self.assertEqual(index["baseId"], "kb-src")
         self.assertEqual(index["documentCount"], 1)
@@ -3545,12 +3872,16 @@ class TestQwenOmega(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(args.func(args), 0)
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "web-release" for item in saved["knowledgeBases"]))
+        self.assertTrue(
+            any(item["id"] == "web-release" for item in saved["knowledgeBases"])
+        )
         index = json.loads(out_path.read_text(encoding="utf-8"))
         self.assertEqual(index["baseId"], "web-release")
         self.assertEqual(index["documentCount"], 1)
         self.assertGreaterEqual(index["chunkCount"], 1)
-        self.assertIn("Version 1.2 ships today", index["documents"][0]["chunks"][0]["text"])
+        self.assertIn(
+            "Version 1.2 ships today", index["documents"][0]["chunks"][0]["text"]
+        )
 
     def test_kb_query(self):
         source_dir = self.tmp_path / "kb-query-src"
@@ -3655,10 +3986,18 @@ class TestQwenOmega(unittest.TestCase):
             self.assertEqual(args.func(args), 0)
 
         refreshed_settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "release-notes" for item in refreshed_settings["knowledgeBases"]))
+        self.assertTrue(
+            any(
+                item["id"] == "release-notes"
+                for item in refreshed_settings["knowledgeBases"]
+            )
+        )
         refreshed_index = json.loads(refresh_path.read_text(encoding="utf-8"))
         self.assertEqual(refreshed_index["baseId"], "release-notes")
-        self.assertIn("Updated content with new rollout steps", refreshed_index["documents"][0]["chunks"][0]["text"])
+        self.assertIn(
+            "Updated content with new rollout steps",
+            refreshed_index["documents"][0]["chunks"][0]["text"],
+        )
 
     def test_kb_sync_rebuilds_all_registered_bases(self):
         source_one = self.tmp_path / "kb-sync-one"
@@ -3724,14 +4063,22 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("Knowledge bases synced: 2", buf.getvalue())
 
         synced_settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "alpha" for item in synced_settings["knowledgeBases"]))
-        self.assertTrue(any(item["id"] == "beta" for item in synced_settings["knowledgeBases"]))
+        self.assertTrue(
+            any(item["id"] == "alpha" for item in synced_settings["knowledgeBases"])
+        )
+        self.assertTrue(
+            any(item["id"] == "beta" for item in synced_settings["knowledgeBases"])
+        )
         synced_alpha = json.loads((sync_dir / "alpha.json").read_text(encoding="utf-8"))
         synced_beta = json.loads((sync_dir / "beta.json").read_text(encoding="utf-8"))
         self.assertEqual(synced_alpha["baseId"], "alpha")
         self.assertEqual(synced_beta["baseId"], "beta")
-        self.assertIn("Updated alpha content", synced_alpha["documents"][0]["chunks"][0]["text"])
-        self.assertIn("Updated beta content", synced_beta["documents"][0]["chunks"][0]["text"])
+        self.assertIn(
+            "Updated alpha content", synced_alpha["documents"][0]["chunks"][0]["text"]
+        )
+        self.assertIn(
+            "Updated beta content", synced_beta["documents"][0]["chunks"][0]["text"]
+        )
         manifest = json.loads((sync_dir / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(sorted(manifest["refreshed"]), ["alpha", "beta"])
 
@@ -3786,7 +4133,9 @@ class TestQwenOmega(unittest.TestCase):
 
         watched_index = json.loads((out_dir / "watch.json").read_text(encoding="utf-8"))
         self.assertEqual(watched_index["baseId"], "watch")
-        self.assertIn("Updated watch content", watched_index["documents"][0]["chunks"][0]["text"])
+        self.assertIn(
+            "Updated watch content", watched_index["documents"][0]["chunks"][0]["text"]
+        )
         self.assertIn("Watched knowledge bases:", buf.getvalue())
 
     def test_snapshot_export_import_round_trip(self):
@@ -3904,7 +4253,9 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         pushed_bundle = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        self.assertEqual(pushed_bundle["settings"]["modelProviders"]["openai"][0]["id"], "push")
+        self.assertEqual(
+            pushed_bundle["settings"]["modelProviders"]["openai"][0]["id"], "push"
+        )
         self.assertEqual(pushed_bundle["settings"]["notes"][0]["title"], "Push Note")
 
         pull_bundle = {
@@ -4048,7 +4399,9 @@ class TestQwenOmega(unittest.TestCase):
 
         thread = threading.Thread(target=mutate_settings_later, daemon=True)
         thread.start()
-        self.assertTrue(mutation_done.wait(timeout=2), "settings mutation did not complete")
+        self.assertTrue(
+            mutation_done.wait(timeout=2), "settings mutation did not complete"
+        )
         parser = qo.build_parser()
         args = parser.parse_args(
             [
@@ -4069,9 +4422,16 @@ class TestQwenOmega(unittest.TestCase):
 
         watched_settings = json.loads(settings_path.read_text(encoding="utf-8"))
         watched_snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        self.assertEqual(watched_settings["modelProviders"]["openai"][0]["id"], "watch-push")
-        self.assertEqual(watched_snapshot["settings"]["modelProviders"]["openai"][0]["id"], "watch-push")
-        self.assertEqual(watched_snapshot["settings"]["notes"][0]["title"], "Watch Push")
+        self.assertEqual(
+            watched_settings["modelProviders"]["openai"][0]["id"], "watch-push"
+        )
+        self.assertEqual(
+            watched_snapshot["settings"]["modelProviders"]["openai"][0]["id"],
+            "watch-push",
+        )
+        self.assertEqual(
+            watched_snapshot["settings"]["notes"][0]["title"], "Watch Push"
+        )
 
     def test_web_search_and_save_to_knowledge(self):
         parser = qo.build_parser()
@@ -4088,7 +4448,9 @@ class TestQwenOmega(unittest.TestCase):
             },
         ]
 
-        def fake_fetch_web_search_results(query, *, provider, engine_url, api_key, timeout, limit):
+        def fake_fetch_web_search_results(
+            query, *, provider, engine_url, api_key, timeout, limit
+        ):
             self.assertEqual(query, "release")
             self.assertEqual(provider, "duckduckgo")
             return search_results
@@ -4138,12 +4500,15 @@ class TestQwenOmega(unittest.TestCase):
             },
         }
 
-        with unittest.mock.patch(
-            "qwen_omega.fetch_web_search_results",
-            side_effect=fake_fetch_web_search_results,
-        ), unittest.mock.patch(
-            "qwen_omega.fetch_web_document",
-            side_effect=lambda url, timeout: doc_map[url],
+        with (
+            unittest.mock.patch(
+                "qwen_omega.fetch_web_search_results",
+                side_effect=fake_fetch_web_search_results,
+            ),
+            unittest.mock.patch(
+                "qwen_omega.fetch_web_document",
+                side_effect=lambda url, timeout: doc_map[url],
+            ),
         ):
             args = parser.parse_args(
                 [
@@ -4164,7 +4529,9 @@ class TestQwenOmega(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(args.func(args), 0)
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "search-release" for item in saved["knowledgeBases"]))
+        self.assertTrue(
+            any(item["id"] == "search-release" for item in saved["knowledgeBases"])
+        )
         index = json.loads(out_path.read_text(encoding="utf-8"))
         self.assertEqual(index["baseId"], "search-release")
         self.assertEqual(index["documentCount"], 2)
@@ -4181,6 +4548,84 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("duckduckgo", output)
         self.assertIn("external", output)
 
+    def test_remote_web_request_rejects_private_network_targets(self):
+        with self.assertRaises(ValueError):
+            qo._validate_public_http_url("http://127.0.0.1:8000/search")
+        with self.assertRaises(ValueError):
+            qo._validate_public_http_url("http://localhost/search")
+        with self.assertRaises(ValueError):
+            qo._validate_public_http_url("file:///etc/passwd")
+
+    def test_remote_web_request_does_not_open_private_target(self):
+        with unittest.mock.patch("qwen_omega.urllib.request.urlopen") as urlopen:
+            with self.assertRaises(ValueError):
+                qo.fetch_web_search_results(
+                    "release",
+                    provider="external",
+                    engine_url="http://127.0.0.1:8000/search",
+                )
+        urlopen.assert_not_called()
+
+    def test_remote_redirect_policy_rejects_private_target(self):
+        handler = qo._PublicRedirectHandler()
+        with self.assertRaises(ValueError):
+            handler.redirect_request(
+                None,
+                None,
+                302,
+                "Found",
+                {"Location": "http://127.0.0.1:8000/private"},
+                "http://127.0.0.1:8000/private",
+            )
+
+    def test_api_knowledge_output_path_is_confined_to_settings_directory(self):
+        settings_path = self.tmp_path / "settings.json"
+        output_path = qo._api_knowledge_output_path(settings_path, "/etc/passwd")
+        self.assertEqual(output_path, self.tmp_path / "knowledge-exports")
+        self.assertEqual(
+            qo._api_knowledge_output_path(settings_path, "requested-name"),
+            self.tmp_path / "knowledge-exports",
+        )
+
+    def test_webhook_dry_run_redacts_secret(self):
+        settings_path = self.tmp_path / "webhooks-redaction.json"
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "$version": 4,
+                    "webhooks": [
+                        {
+                            "id": "ops-alerts",
+                            "name": "Ops Alerts",
+                            "url": "https://hooks.example.test/notify",
+                            "secret": "do-not-print-me",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        parser = qo.build_parser()
+        args = parser.parse_args(
+            [
+                "webhooks",
+                "share",
+                "--settings",
+                str(settings_path),
+                "--id",
+                "ops-alerts",
+                "--format",
+                "json",
+                "--dry-run",
+                "-",
+            ]
+        )
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(args.func(args), 0)
+        self.assertNotIn("do-not-print-me", buf.getvalue())
+        self.assertIn("ops-alerts", buf.getvalue())
+
     def test_web_search_external_provider_and_save_to_knowledge(self):
         parser = qo.build_parser()
         search_results = [
@@ -4196,7 +4641,9 @@ class TestQwenOmega(unittest.TestCase):
             },
         ]
 
-        def fake_fetch_web_search_results(query, *, provider, engine_url, api_key, timeout, limit):
+        def fake_fetch_web_search_results(
+            query, *, provider, engine_url, api_key, timeout, limit
+        ):
             self.assertEqual(query, "release")
             self.assertEqual(provider, "external")
             return search_results
@@ -4248,12 +4695,15 @@ class TestQwenOmega(unittest.TestCase):
             },
         }
 
-        with unittest.mock.patch(
-            "qwen_omega.fetch_web_search_results",
-            side_effect=fake_fetch_web_search_results,
-        ), unittest.mock.patch(
-            "qwen_omega.fetch_web_document",
-            side_effect=lambda url, timeout: doc_map[url],
+        with (
+            unittest.mock.patch(
+                "qwen_omega.fetch_web_search_results",
+                side_effect=fake_fetch_web_search_results,
+            ),
+            unittest.mock.patch(
+                "qwen_omega.fetch_web_document",
+                side_effect=lambda url, timeout: doc_map[url],
+            ),
         ):
             args = parser.parse_args(
                 [
@@ -4276,7 +4726,9 @@ class TestQwenOmega(unittest.TestCase):
             with redirect_stdout(io.StringIO()):
                 self.assertEqual(args.func(args), 0)
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "search-release" for item in saved["knowledgeBases"]))
+        self.assertTrue(
+            any(item["id"] == "search-release" for item in saved["knowledgeBases"])
+        )
         index = json.loads(out_path.read_text(encoding="utf-8"))
         self.assertEqual(index["baseId"], "search-release")
         self.assertEqual(index["documentCount"], 2)
@@ -4292,7 +4744,7 @@ class TestQwenOmega(unittest.TestCase):
                 "--fallback-provider",
                 "brave",
                 "--engine-url",
-                "http://127.0.0.1:8000/search",
+                "http://example.test/search",
                 "--limit",
                 "3",
                 "release",
@@ -4304,18 +4756,36 @@ class TestQwenOmega(unittest.TestCase):
             calls.append((provider, engine_url))
             if provider == "external":
                 return [
-                    {"title": "Primary Release", "url": "http://example.com/release", "snippet": "primary"},
-                    {"title": "Primary Duplicate", "url": "http://example.com/shared", "snippet": "dup"},
+                    {
+                        "title": "Primary Release",
+                        "url": "http://example.com/release",
+                        "snippet": "primary",
+                    },
+                    {
+                        "title": "Primary Duplicate",
+                        "url": "http://example.com/shared",
+                        "snippet": "dup",
+                    },
                 ]
             if provider == "brave":
                 return [
-                    {"title": "Fallback Duplicate", "url": "http://example.com/shared", "snippet": "dup"},
-                    {"title": "Fallback Docs", "url": "http://example.com/docs", "snippet": "docs"},
+                    {
+                        "title": "Fallback Duplicate",
+                        "url": "http://example.com/shared",
+                        "snippet": "dup",
+                    },
+                    {
+                        "title": "Fallback Docs",
+                        "url": "http://example.com/docs",
+                        "snippet": "docs",
+                    },
                 ]
             return []
 
         buf = io.StringIO()
-        with unittest.mock.patch.object(qo, "fetch_web_search_results", side_effect=fake_fetch):
+        with unittest.mock.patch.object(
+            qo, "fetch_web_search_results", side_effect=fake_fetch
+        ):
             with redirect_stdout(buf):
                 self.assertEqual(args.func(args), 0)
 
@@ -4373,7 +4843,9 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "memory-source" for item in saved["memories"]))
+        self.assertTrue(
+            any(item["id"] == "memory-source" for item in saved["memories"])
+        )
 
         export_path = self.tmp_path / "memories-export.json"
         args = parser.parse_args(
@@ -4423,7 +4895,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = share_html.read_text(encoding="utf-8")
-        self.assertIn("data-memory-id=\"preferences\"", rendered_html)
+        self.assertIn('data-memory-id="preferences"', rendered_html)
         self.assertIn("Prefer concise answers", rendered_html)
 
         args = parser.parse_args(
@@ -4443,8 +4915,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "preferences-copy" for item in cloned["memories"]))
-        clone_item = next(item for item in cloned["memories"] if item["id"] == "preferences-copy")
+        self.assertTrue(
+            any(item["id"] == "preferences-copy" for item in cloned["memories"])
+        )
+        clone_item = next(
+            item for item in cloned["memories"] if item["id"] == "preferences-copy"
+        )
         self.assertEqual(clone_item["title"], "Preferences Copy")
         self.assertEqual(clone_item["content"], "Prefer concise answers.")
 
@@ -4528,8 +5004,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "ops-alerts-copy" for item in cloned["webhooks"]))
-        clone_item = next(item for item in cloned["webhooks"] if item["id"] == "ops-alerts-copy")
+        self.assertTrue(
+            any(item["id"] == "ops-alerts-copy" for item in cloned["webhooks"])
+        )
+        clone_item = next(
+            item for item in cloned["webhooks"] if item["id"] == "ops-alerts-copy"
+        )
         self.assertEqual(clone_item["name"], "Ops Alerts Copy")
         self.assertEqual(clone_item["url"], "http://127.0.0.1:9000/webhook")
         self.assertEqual(clone_item["events"], ["chat.created", "chat.updated"])
@@ -4566,7 +5046,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = share_html.read_text(encoding="utf-8")
-        self.assertIn("data-webhook-id=\"ops-alerts\"", rendered_html)
+        self.assertIn('data-webhook-id="ops-alerts"', rendered_html)
         self.assertIn("http://127.0.0.1:9000/webhook", rendered_html)
 
     def test_notes_add_import_export(self):
@@ -4665,7 +5145,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-note-id=\"review\"", rendered_html)
+        self.assertIn('data-note-id="review"', rendered_html)
         self.assertIn("Attachments: handoff", rendered_html)
         self.assertIn("Images: preview.png", rendered_html)
 
@@ -4687,7 +5167,9 @@ class TestQwenOmega(unittest.TestCase):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
         self.assertTrue(any(item["id"] == "review-copy" for item in cloned["notes"]))
-        clone_item = next(item for item in cloned["notes"] if item["id"] == "review-copy")
+        clone_item = next(
+            item for item in cloned["notes"] if item["id"] == "review-copy"
+        )
         self.assertEqual(clone_item["title"], "Review Copy")
         self.assertEqual(clone_item["body"], "Check the diff for regressions.")
 
@@ -4816,8 +5298,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "release-notes-copy" for item in cloned["artifacts"]))
-        clone_item = next(item for item in cloned["artifacts"] if item["id"] == "release-notes-copy")
+        self.assertTrue(
+            any(item["id"] == "release-notes-copy" for item in cloned["artifacts"])
+        )
+        clone_item = next(
+            item for item in cloned["artifacts"] if item["id"] == "release-notes-copy"
+        )
         self.assertEqual(clone_item["title"], "Release Notes Copy")
         self.assertEqual(clone_item["content"], "Release notes content.")
 
@@ -4838,7 +5324,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-artifact-id=\"release-notes\"", rendered_html)
+        self.assertIn('data-artifact-id="release-notes"', rendered_html)
         self.assertIn("Release notes content.", rendered_html)
 
     def test_search_across_registries(self):
@@ -4981,91 +5467,152 @@ class TestQwenOmega(unittest.TestCase):
             encoding="utf-8",
         )
         parser = qo.build_parser()
-        args = parser.parse_args(["search", "--settings", str(settings_path), "release"])
+        args = parser.parse_args(
+            ["search", "--settings", str(settings_path), "release"]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("notes", buf.getvalue())
         self.assertIn("Release", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "files", "handoff"])
+        args = parser.parse_args(
+            ["search", "--settings", str(settings_path), "--kind", "files", "handoff"]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("files", buf.getvalue())
         self.assertIn("Handoff", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "skills", "planning"])
+        args = parser.parse_args(
+            ["search", "--settings", str(settings_path), "--kind", "skills", "planning"]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("skills", buf.getvalue())
         self.assertIn("Planning", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "plugins", "search"])
+        args = parser.parse_args(
+            ["search", "--settings", str(settings_path), "--kind", "plugins", "search"]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("plugins", buf.getvalue())
         self.assertIn("Search Booster", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "pipelines", "moderation"])
+        args = parser.parse_args(
+            [
+                "search",
+                "--settings",
+                str(settings_path),
+                "--kind",
+                "pipelines",
+                "moderation",
+            ]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("pipelines", buf.getvalue())
         self.assertIn("Moderation", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "filters", "safety"])
+        args = parser.parse_args(
+            ["search", "--settings", str(settings_path), "--kind", "filters", "safety"]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("filters", buf.getvalue())
         self.assertIn("Safety Filter", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "actions", "ticket"])
+        args = parser.parse_args(
+            ["search", "--settings", str(settings_path), "--kind", "actions", "ticket"]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("actions", buf.getvalue())
         self.assertIn("Ticket Action", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "automations", "summary"])
+        args = parser.parse_args(
+            [
+                "search",
+                "--settings",
+                str(settings_path),
+                "--kind",
+                "automations",
+                "summary",
+            ]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("automations", buf.getvalue())
         self.assertIn("Daily Summary", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "agents", "mentor"])
+        args = parser.parse_args(
+            ["search", "--settings", str(settings_path), "--kind", "agents", "mentor"]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("agents", buf.getvalue())
         self.assertIn("Mentor", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "conversations", "planning"])
+        args = parser.parse_args(
+            [
+                "search",
+                "--settings",
+                str(settings_path),
+                "--kind",
+                "conversations",
+                "planning",
+            ]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("conversations", buf.getvalue())
         self.assertIn("Planning", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "channels", "planning"])
+        args = parser.parse_args(
+            [
+                "search",
+                "--settings",
+                str(settings_path),
+                "--kind",
+                "channels",
+                "planning",
+            ]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("channels", buf.getvalue())
         self.assertIn("Planning Channel", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "folders", "project"])
+        args = parser.parse_args(
+            ["search", "--settings", str(settings_path), "--kind", "folders", "project"]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
         self.assertIn("folders", buf.getvalue())
         self.assertIn("Project Alpha", buf.getvalue())
 
-        args = parser.parse_args(["search", "--settings", str(settings_path), "--kind", "artifacts", "diagram"])
+        args = parser.parse_args(
+            [
+                "search",
+                "--settings",
+                str(settings_path),
+                "--kind",
+                "artifacts",
+                "diagram",
+            ]
+        )
         buf = io.StringIO()
         with redirect_stdout(buf):
             self.assertEqual(args.func(args), 0)
@@ -5103,7 +5650,9 @@ class TestQwenOmega(unittest.TestCase):
         self.assertEqual(saved["conversations"][0]["images"], ["cover.png"])
 
         source_path = self.tmp_path / "conversation-source.md"
-        source_path.write_text("# Retro\nassistant: Review what went well.\n", encoding="utf-8")
+        source_path.write_text(
+            "# Retro\nassistant: Review what went well.\n", encoding="utf-8"
+        )
         args = parser.parse_args(
             [
                 "conversations",
@@ -5116,7 +5665,9 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "conversation-source" for item in saved["conversations"]))
+        self.assertTrue(
+            any(item["id"] == "conversation-source" for item in saved["conversations"])
+        )
 
         out_path = self.tmp_path / "conversations-export.json"
         args = parser.parse_args(
@@ -5172,7 +5723,7 @@ class TestQwenOmega(unittest.TestCase):
         rendered_html = html_path.read_text(encoding="utf-8")
         self.assertIn("<title>Planning</title>", rendered_html)
         self.assertIn("assistant: We should ship on Friday.", rendered_html)
-        self.assertIn("data-conversation-id=\"planning\"", rendered_html)
+        self.assertIn('data-conversation-id="planning"', rendered_html)
         self.assertIn("Attachments: handoff", rendered_html)
         self.assertIn("Images: cover.png", rendered_html)
 
@@ -5193,8 +5744,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "planning-copy" for item in cloned["conversations"]))
-        clone_item = next(item for item in cloned["conversations"] if item["id"] == "planning-copy")
+        self.assertTrue(
+            any(item["id"] == "planning-copy" for item in cloned["conversations"])
+        )
+        clone_item = next(
+            item for item in cloned["conversations"] if item["id"] == "planning-copy"
+        )
         self.assertEqual(clone_item["title"], "Planning Copy")
         self.assertEqual(
             clone_item["transcript"],
@@ -5243,7 +5798,9 @@ class TestQwenOmega(unittest.TestCase):
         )
 
         source_path = self.tmp_path / "channel-source.md"
-        source_path.write_text("# Retro\nassistant: Review what went well.\n", encoding="utf-8")
+        source_path.write_text(
+            "# Retro\nassistant: Review what went well.\n", encoding="utf-8"
+        )
         args = parser.parse_args(
             [
                 "channels",
@@ -5256,7 +5813,9 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "channel-source" for item in saved["channels"]))
+        self.assertTrue(
+            any(item["id"] == "channel-source" for item in saved["channels"])
+        )
 
         out_path = self.tmp_path / "channels-export.json"
         args = parser.parse_args(
@@ -5312,7 +5871,7 @@ class TestQwenOmega(unittest.TestCase):
         rendered_html = html_path.read_text(encoding="utf-8")
         self.assertIn("<title>Planning Channel</title>", rendered_html)
         self.assertIn("Keep the release on track.", rendered_html)
-        self.assertIn("data-channel-id=\"planning-channel\"", rendered_html)
+        self.assertIn('data-channel-id="planning-channel"', rendered_html)
         self.assertIn("Attachments: handoff", rendered_html)
         self.assertIn("Images: cover.png", rendered_html)
 
@@ -5366,7 +5925,9 @@ class TestQwenOmega(unittest.TestCase):
             self.assertEqual(args.func(args), 0)
         saved = json.loads(settings_path.read_text(encoding="utf-8"))
         self.assertEqual(saved["folders"][0]["id"], "project-alpha")
-        self.assertEqual(saved["folders"][0]["systemPrompt"], "Be concise and project-aware.")
+        self.assertEqual(
+            saved["folders"][0]["systemPrompt"], "Be concise and project-aware."
+        )
 
         folder_import = self.tmp_path / "folders-source.json"
         folder_import.write_text(
@@ -5431,8 +5992,12 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
-        self.assertTrue(any(item["id"] == "project-alpha-copy" for item in cloned["folders"]))
-        clone_item = next(item for item in cloned["folders"] if item["id"] == "project-alpha-copy")
+        self.assertTrue(
+            any(item["id"] == "project-alpha-copy" for item in cloned["folders"])
+        )
+        clone_item = next(
+            item for item in cloned["folders"] if item["id"] == "project-alpha-copy"
+        )
         self.assertEqual(clone_item["name"], "Project Alpha Copy")
         self.assertEqual(clone_item["systemPrompt"], "Be concise and project-aware.")
 
@@ -5454,7 +6019,10 @@ class TestQwenOmega(unittest.TestCase):
             self.assertEqual(args.func(args), 0)
         convo_saved = json.loads(settings_path.read_text(encoding="utf-8"))
         self.assertEqual(convo_saved["conversations"][0]["folderId"], "project-alpha")
-        self.assertEqual(convo_saved["conversations"][0]["systemPrompt"], "Be concise and project-aware.")
+        self.assertEqual(
+            convo_saved["conversations"][0]["systemPrompt"],
+            "Be concise and project-aware.",
+        )
         self.assertEqual(convo_saved["conversations"][0]["knowledge"], ["docs"])
 
         args = parser.parse_args(
@@ -5478,7 +6046,11 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         convo_saved = json.loads(settings_path.read_text(encoding="utf-8"))
-        override = next(item for item in convo_saved["conversations"] if item["id"] == "override-chat")
+        override = next(
+            item
+            for item in convo_saved["conversations"]
+            if item["id"] == "override-chat"
+        )
         self.assertEqual(override["systemPrompt"], "Override the folder prompt.")
         self.assertEqual(override["knowledge"], ["ops"])
 
@@ -5617,7 +6189,7 @@ class TestQwenOmega(unittest.TestCase):
         with redirect_stdout(io.StringIO()):
             self.assertEqual(args.func(args), 0)
         rendered_html = html_path.read_text(encoding="utf-8")
-        self.assertIn("data-agent-id=\"mentor\"", rendered_html)
+        self.assertIn('data-agent-id="mentor"', rendered_html)
         self.assertIn("Help with release planning and code review.", rendered_html)
 
         args = parser.parse_args(
@@ -5638,7 +6210,9 @@ class TestQwenOmega(unittest.TestCase):
             self.assertEqual(args.func(args), 0)
         cloned = json.loads(settings_path.read_text(encoding="utf-8"))
         self.assertTrue(any(item["id"] == "mentor-copy" for item in cloned["agents"]))
-        clone_item = next(item for item in cloned["agents"] if item["id"] == "mentor-copy")
+        clone_item = next(
+            item for item in cloned["agents"] if item["id"] == "mentor-copy"
+        )
         self.assertEqual(clone_item["name"], "Mentor Copy")
         self.assertEqual(clone_item["baseModel"], "qwen3-coder:latest")
 
