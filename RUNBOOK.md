@@ -132,7 +132,52 @@ gh variable set ENABLE_LIVE_TESTS --body "true" --repo cvsz/qwen-gen
 
 ---
 
-## 6. Release & Packaging Guide
+## 6. Cloud Deployment Guide
+
+The browser chat UI can run behind a cloud ingress with a persistent settings
+volume.
+
+### Container build and run
+
+```bash
+docker build -t qwen-gen .
+docker run --rm -p 8787:8787 \
+  -e QWEN_SETTINGS=/data/settings.json \
+  -e QWEN_HOST=0.0.0.0 \
+  -e QWEN_PORT=8787 \
+  -v qwen-gen-data:/data \
+  qwen-gen
+```
+
+### Health check
+
+```bash
+curl -fsS http://127.0.0.1:8787/api/health
+```
+
+### Runtime variables
+
+- `QWEN_SETTINGS=/data/settings.json`
+- `QWEN_HOST=0.0.0.0`
+- `QWEN_PORT=8787`
+- provider keys such as `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `DASHSCOPE_API_KEY`
+
+### Operational notes
+
+- Keep the settings volume mounted or the browser chat state will reset on restart.
+- Put the deployment behind HTTPS and access control before exposing it publicly.
+- For local testing, the same entrypoint works with `docker compose up --build`.
+- Use `./qwen-cloud.sh` for the default `/mnt/qwen-gen-data` HDD-backed launch.
+- Use `./qwen-stack.sh` for the full Ollama + LiteLLM + Open WebUI + NextChat stack.
+- Use `./sync-free-models.sh --timeout 20` after changing `.env.ai` to refresh
+  the provider-declared discovery catalog. It is not a quota check.
+- Use `./qwen-free.sh --settings /mnt/qwen-gen-data/settings.json --env-root /home/cvsz/qwen-gen --timeout 60 --litellm-config /home/cvsz/qwen-gen/litellm-config.yaml` after changing `.env.ai` to retain only chat-probeable free models in both qwen-gen and LiteLLM.
+- The full-stack helper uses the existing host Ollama at `127.0.0.1:11434`, publishes NextChat on host port `3000` by default, and keeps secondary Open WebUI on `3011`.
+- Open WebUI starts in offline mode so the merged stack does not block on first-run Hugging Face downloads.
+
+---
+
+## 7. Release & Packaging Guide
 
 ### Building Packages Locally
 
@@ -166,7 +211,7 @@ git push origin main --tags
 
 ---
 
-## 7. Troubleshooting & FAQs
+## 8. Troubleshooting & FAQs
 
 ### Problem: `ERROR: environment variable DASHSCOPE_API_KEY is unset`
 - **Cause**: Selected backend requires an API key that is not present in the environment.

@@ -2009,13 +2009,12 @@ def normalize_conversations(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 continue
             if not isinstance(title, str) or not title.strip():
                 title = convo_id.strip()
-            if not isinstance(transcript, str) or not transcript.strip():
-                transcript = ""
             normalized_item: dict[str, Any] = {
                 "id": convo_id.strip(),
                 "title": str(title).strip(),
-                "transcript": transcript,
             }
+            if isinstance(transcript, str) and transcript.strip():
+                normalized_item["transcript"] = transcript
             system_prompt = item.get("systemPrompt", item.get("instructions", item.get("prompt")))
             if isinstance(system_prompt, str) and system_prompt.strip():
                 normalized_item["systemPrompt"] = system_prompt.strip()
@@ -3071,6 +3070,13 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     not isinstance(system_prompt, str) or not system_prompt.strip()
                 ):
                     errors.append(f"conversations[{index}].systemPrompt must be a non-empty string")
+                clear_context_index = convo.get("clearContextIndex")
+                if clear_context_index is not None and (
+                    not isinstance(clear_context_index, int)
+                    or isinstance(clear_context_index, bool)
+                    or clear_context_index < 0
+                ):
+                    errors.append(f"conversations[{index}].clearContextIndex must be a non-negative integer")
                 knowledge = convo.get("knowledge")
                 if knowledge is not None and not isinstance(knowledge, list):
                     errors.append(f"conversations[{index}].knowledge must be an array")
@@ -7768,6 +7774,13 @@ def _request_error_is_missing_model(error: RequestError) -> bool:
     return "not_found_error" in message or ("model" in message and "not found" in message)
 
 
+def _request_error_allows_fallback(settings: dict[str, Any], error: RequestError) -> bool:
+    general = settings.get("general")
+    if isinstance(general, dict) and general.get("autoFallback") is True:
+        return True
+    return _request_error_is_missing_model(error)
+
+
 def _settings_model_provider_key(settings: dict[str, Any]) -> str:
     auth = settings.get("security", {})
     if isinstance(auth, dict):
@@ -7971,6 +7984,10 @@ def _settings_bootstrap(settings: dict[str, Any]) -> dict[str, Any]:
         "version": VERSION,
         "selectedModel": _settings_default_model(settings),
         "selectedProvider": _settings_model_provider_key(settings),
+        "autoFallback": bool(
+            isinstance(settings.get("general"), dict)
+            and settings.get("general", {}).get("autoFallback") is True
+        ),
         "models": models,
         "promptTemplates": templates,
         "folders": [
@@ -8590,7 +8607,7 @@ def _chat_completion(
             return _CHAT_COMPLETION_SINGLE(settings, candidate, messages, payload, insecure=insecure)
         except RequestError as exc:
             last_error = exc
-            if candidate != candidates[-1] and _request_error_is_missing_model(exc):
+            if candidate != candidates[-1] and _request_error_allows_fallback(settings, exc):
                 continue
             raise
     if last_error is not None:
@@ -8620,7 +8637,7 @@ def _stream_chat_completion(
             )
         except RequestError as exc:
             last_error = exc
-            if candidate != candidates[-1] and _request_error_is_missing_model(exc):
+            if candidate != candidates[-1] and _request_error_allows_fallback(settings, exc):
                 continue
             raise
     if last_error is not None:
@@ -8774,6 +8791,10 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     .voice-toggle {{
       min-width: 92px;
       justify-content: center;
+    }}
+    .voice-select {{
+      min-width: 180px;
+      max-width: 240px;
     }}
     .brand {{
       display: flex;
@@ -8935,6 +8956,25 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       gap: 10px;
     }}
     .provider-controls .toolbar {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+    .provider-empty {{
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px dashed rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.03);
+    }}
+    .provider-empty p,
+    .conversation-empty p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }}
+    .provider-empty .toolbar,
+    .conversation-empty .toolbar {{
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }}
     .provider-item {{
@@ -9344,6 +9384,53 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       align-items: center;
       gap: 8px;
     }}
+    .file-tree {{
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .file-tree-dir {{
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.02);
+      overflow: hidden;
+    }}
+    .file-tree-dir > summary {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      list-style: none;
+    }}
+    .file-tree-dir > summary::-webkit-details-marker {{
+      display: none;
+    }}
+    .file-tree-summary {{
+      font-weight: 700;
+    }}
+    .file-tree-summary .muted {{
+      margin-left: auto;
+      font-weight: 500;
+    }}
+    .file-tree-children {{
+      padding: 0 0 12px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .file-item.selected {{
+      border-color: rgba(102, 227, 196, 0.35);
+      background: rgba(102, 227, 196, 0.08);
+    }}
+    .file-item .select-toggle {{
+      flex: 0 0 auto;
+      min-width: 88px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+    }}
     .file-item .chip {{
       flex: 1;
       text-align: left;
@@ -9452,6 +9539,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       background: rgba(102, 227, 196, 0.08);
     }}
     .conversation-item small {{ color: var(--muted); display: block; margin-top: 4px; }}
+    .conversation-item .conversation-item-snippet {{
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-top: 2px;
+    }}
     .conversation-item-body {{
       display: grid;
       gap: 8px;
@@ -9479,6 +9576,34 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       border-radius: 10px;
       font-size: 0.82rem;
       flex: 1;
+    }}
+    .conversation-empty {{
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px dashed rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.03);
+    }}
+    .clear-context-divider {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 0 6px;
+      padding: 10px 14px;
+      border: 1px dashed rgba(102, 227, 196, 0.28);
+      border-radius: 16px;
+      color: var(--muted);
+      background: rgba(102, 227, 196, 0.05);
+    }}
+    .clear-context-divider strong {{
+      color: var(--text);
+    }}
+    .clear-context-divider button {{
+      flex: 0 0 auto;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 0.82rem;
     }}
     .main {{
       display: grid;
@@ -9710,6 +9835,120 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       overflow: hidden;
       border-radius: 14px;
     }}
+    .message-content .callout {{
+      display: grid;
+      gap: 8px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(102, 227, 196, 0.16);
+      background: rgba(102, 227, 196, 0.07);
+    }}
+    .message-content .callout-title {{
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #8bf0db;
+    }}
+    .message-content .callout-body {{
+      display: grid;
+      gap: 0.75rem;
+    }}
+    .message-content .footnotes {{
+      display: grid;
+      gap: 10px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 0.92rem;
+    }}
+    .message-content .footnotes ol {{
+      margin: 0;
+      padding-left: 1.4rem;
+      display: grid;
+      gap: 8px;
+    }}
+    .message-content .footnote-ref {{
+      font-size: 0.82em;
+      vertical-align: super;
+    }}
+    .message-content .footnote-backref {{
+      margin-left: 0.35rem;
+      text-decoration: none;
+    }}
+    .message-content .citation {{
+      display: inline-flex;
+      align-items: center;
+      padding: 0.04rem 0.42rem;
+      margin: 0 0.06rem;
+      border-radius: 999px;
+      font-size: 0.82em;
+      font-weight: 700;
+      background: rgba(124, 156, 255, 0.12);
+      border: 1px solid rgba(124, 156, 255, 0.22);
+      color: #dbe7ff;
+      font: inherit;
+      line-height: inherit;
+      cursor: pointer;
+    }}
+    .message-sources {{
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }}
+    .message-sources-title {{
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }}
+    .message-sources-list {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .message-source-chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(124, 156, 255, 0.18);
+      background: rgba(124, 156, 255, 0.08);
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 0.86rem;
+      cursor: pointer;
+    }}
+    .message-source-chip .muted {{
+      font-size: 0.82em;
+    }}
+    .message-content .mention {{
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0.08rem 0.42rem;
+      border-radius: 999px;
+      font-size: 0.9em;
+      font-weight: 600;
+      border: 1px solid transparent;
+    }}
+    .message-content .mention-at {{
+      background: rgba(124, 156, 255, 0.12);
+      color: #cfe0ff;
+      border-color: rgba(124, 156, 255, 0.22);
+    }}
+    .message-content .mention-hash {{
+      background: rgba(102, 227, 196, 0.12);
+      color: #d5fff5;
+      border-color: rgba(102, 227, 196, 0.22);
+    }}
+    .message-content .mention-dollar {{
+      background: rgba(250, 204, 21, 0.12);
+      color: #fff0b3;
+      border-color: rgba(250, 204, 21, 0.22);
+    }}
     .message-content th,
     .message-content td {{
       border: 1px solid rgba(255,255,255,0.08);
@@ -9810,6 +10049,56 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       display: grid;
       grid-template-columns: 1.15fr 0.85fr;
       gap: 14px;
+    }}
+    .onboarding-summary {{
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(102, 227, 196, 0.24);
+      background:
+        linear-gradient(135deg, rgba(102, 227, 196, 0.12), rgba(124, 156, 255, 0.10)),
+        rgba(11, 16, 32, 0.72);
+    }}
+    .onboarding-summary header {{
+      display: grid;
+      gap: 6px;
+    }}
+    .onboarding-summary h4 {{
+      margin: 0;
+      font-size: 1rem;
+    }}
+    .onboarding-summary p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }}
+    .onboarding-badges {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .onboarding-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }}
+    .onboarding-badge.missing {{
+      border-color: rgba(255, 119, 131, 0.32);
+      background: rgba(255, 119, 131, 0.10);
+      color: #ffd4d8;
+    }}
+    .onboarding-badge.ready {{
+      border-color: rgba(102, 227, 196, 0.30);
+      background: rgba(102, 227, 196, 0.10);
+      color: #d8fff4;
     }}
     .onboarding-panel {{
       display: grid;
@@ -9932,6 +10221,24 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       flex: 1;
       min-width: min(460px, 100%);
     }}
+    .composer-state {{
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px dashed rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.03);
+    }}
+    .composer-state p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }}
+    .composer-state .toolbar {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
     .composer-quick-actions {{
       display: flex;
       flex-wrap: wrap;
@@ -10048,15 +10355,1147 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         display: none;
       }}
     }}
+
+    /* Qwen Gen visual system refresh: quiet chrome, clear hierarchy, focused writing surface. */
+    :root {{
+      --bg: #080b12;
+      --panel: #111722;
+      --panel-2: #171f2d;
+      --line: rgba(167, 183, 210, 0.16);
+      --line-strong: rgba(167, 183, 210, 0.28);
+      --text: #f3f6fb;
+      --muted: #99a7ba;
+      --accent: #7ce6c3;
+      --accent-2: #93a9ff;
+      --danger: #ff8798;
+      --bubble-user: #213154;
+      --bubble-assistant: #131c2b;
+      --shadow: 0 24px 72px rgba(0, 0, 0, 0.32);
+      --radius-card: 18px;
+      --radius-control: 12px;
+      --motion: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    }}
+    body {{
+      background:
+        radial-gradient(circle at 0% 0%, rgba(124, 230, 195, 0.11), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(147, 169, 255, 0.12), transparent 28%),
+        linear-gradient(180deg, #080b12 0%, #0b1019 100%);
+      letter-spacing: -0.005em;
+    }}
+    body::selection {{
+      background: rgba(124, 230, 195, 0.32);
+      color: var(--text);
+    }}
+    .app {{
+      grid-template-columns: 276px minmax(0, 1fr);
+    }}
+    .app::before {{
+      background:
+        radial-gradient(circle at 16% 12%, rgba(124, 230, 195, 0.08), transparent 26%),
+        radial-gradient(circle at 84% 4%, rgba(147, 169, 255, 0.08), transparent 24%),
+        linear-gradient(transparent 95%, rgba(255,255,255,0.025) 95%),
+        linear-gradient(90deg, transparent 95%, rgba(255,255,255,0.025) 95%);
+      background-size: auto, auto, 80px 80px, 80px 80px;
+      opacity: 0.32;
+    }}
+    .skip-link {{
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 60;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #071018;
+      font-weight: 800;
+      text-decoration: none;
+      transform: translateY(-160%);
+      transition: transform var(--motion);
+    }}
+    .skip-link:focus {{
+      transform: translateY(0);
+    }}
+    .sidebar {{
+      padding: 18px 12px 14px;
+      gap: 14px;
+      background: linear-gradient(180deg, rgba(12, 17, 28, 0.96), rgba(9, 13, 21, 0.92));
+      border-right-color: rgba(167, 183, 210, 0.14);
+      box-shadow: 18px 0 50px rgba(0, 0, 0, 0.14);
+    }}
+    .brand {{
+      position: relative;
+      padding: 6px 10px 16px 56px;
+      border-bottom: 1px solid rgba(167, 183, 210, 0.14);
+    }}
+    .brand::before {{
+      content: 'Q';
+      position: absolute;
+      top: 7px;
+      left: 8px;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #071018;
+      font-size: 1.15rem;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      box-shadow: 0 10px 24px rgba(124, 230, 195, 0.16);
+    }}
+    .brand::after {{
+      content: 'LOCAL WORKSPACE';
+      position: absolute;
+      left: 56px;
+      bottom: 3px;
+      color: var(--accent);
+      font-size: 0.56rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+    }}
+    .brand h1 {{
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }}
+    .brand p {{
+      max-width: 190px;
+      font-size: 0.76rem;
+      line-height: 1.45;
+    }}
+    .workspace-hero {{
+      gap: 10px;
+      padding: 14px;
+      border-radius: var(--radius-card);
+      border-color: rgba(124, 230, 195, 0.22);
+      background:
+        linear-gradient(145deg, rgba(124, 230, 195, 0.13), rgba(147, 169, 255, 0.07)),
+        rgba(17, 23, 34, 0.82);
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.16);
+    }}
+    .workspace-hero .eyebrow {{
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+    }}
+    .workspace-hero h2 {{
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }}
+    .workspace-hero p {{
+      font-size: 0.78rem;
+      line-height: 1.48;
+    }}
+    .workspace-stats {{
+      gap: 8px;
+    }}
+    .workspace-stat {{
+      padding: 9px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.045);
+    }}
+    .workspace-stat strong {{
+      font-size: 0.84rem;
+    }}
+    .workspace-stat span {{
+      font-size: 0.68rem;
+      line-height: 1.35;
+    }}
+    .panel {{
+      border-radius: var(--radius-card);
+      padding: 12px;
+      background: rgba(17, 23, 34, 0.82);
+      border-color: rgba(167, 183, 210, 0.14);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14);
+    }}
+    .sidebar > .panel.stack {{
+      gap: 0;
+      padding: 8px;
+      background: rgba(13, 18, 28, 0.78);
+      box-shadow: none;
+    }}
+    .sidebar > .panel.stack > * {{
+      padding: 12px 6px 14px;
+      border-bottom: 1px solid rgba(167, 183, 210, 0.11);
+    }}
+    .sidebar > .panel.stack > *:first-child {{
+      padding-top: 6px;
+    }}
+    .sidebar > .panel.stack > *:last-child {{
+      border-bottom: 0;
+      padding-bottom: 6px;
+    }}
+    .label {{
+      margin-bottom: 7px;
+      color: #aebbd0;
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+    }}
+    select, textarea, input {{
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: var(--radius-control);
+      border-color: rgba(167, 183, 210, 0.18);
+      background: rgba(10, 15, 24, 0.78);
+      color: var(--text);
+      transition: border-color var(--motion), box-shadow var(--motion), background var(--motion);
+    }}
+    select:hover, textarea:hover, input:hover {{
+      border-color: rgba(167, 183, 210, 0.34);
+    }}
+    select:focus, textarea:focus, input:focus {{
+      border-color: rgba(124, 230, 195, 0.72);
+      background: rgba(15, 22, 34, 0.96);
+      box-shadow: 0 0 0 3px rgba(124, 230, 195, 0.12);
+    }}
+    textarea {{
+      line-height: 1.55;
+    }}
+    button {{
+      min-height: 44px;
+      padding: 10px 13px;
+      border-radius: var(--radius-control);
+      background: linear-gradient(135deg, #83e9cf, #9aabff);
+      color: #071018;
+      box-shadow: 0 8px 20px rgba(124, 230, 195, 0.12);
+      transition: transform var(--motion), box-shadow var(--motion), filter var(--motion), border-color var(--motion), background var(--motion);
+    }}
+    button:hover:not(:disabled) {{
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(124, 230, 195, 0.16);
+    }}
+    button:active:not(:disabled) {{
+      transform: translateY(0);
+    }}
+    button:disabled {{
+      cursor: not-allowed;
+      opacity: 0.48;
+      box-shadow: none;
+    }}
+    button.secondary {{
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--text);
+      border-color: rgba(167, 183, 210, 0.2);
+      box-shadow: none;
+    }}
+    button.secondary:hover:not(:disabled) {{
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(167, 183, 210, 0.38);
+      box-shadow: none;
+    }}
+    button.danger {{
+      background: rgba(255, 135, 152, 0.11);
+      color: #ffd6dc;
+      border-color: rgba(255, 135, 152, 0.28);
+      box-shadow: none;
+    }}
+    button.danger:hover:not(:disabled) {{
+      background: rgba(255, 135, 152, 0.18);
+      border-color: rgba(255, 135, 152, 0.44);
+    }}
+    button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible {{
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }}
+    .hint {{
+      color: #8998ae;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }}
+    .muted {{
+      color: var(--muted);
+    }}
+    .chip {{
+      min-height: 38px;
+      padding: 8px 11px;
+      border-color: rgba(167, 183, 210, 0.18);
+      background: rgba(255, 255, 255, 0.045);
+      transition: background var(--motion), border-color var(--motion), transform var(--motion);
+    }}
+    .chip:hover {{
+      background: rgba(124, 230, 195, 0.08);
+      border-color: rgba(124, 230, 195, 0.34);
+      transform: translateY(-1px);
+    }}
+    .resource-preview, .resource-editor, .agent-editor {{
+      border-color: rgba(167, 183, 210, 0.15);
+      background: rgba(255, 255, 255, 0.028);
+    }}
+    .resource-preview {{
+      background: rgba(8, 12, 19, 0.62);
+      line-height: 1.5;
+    }}
+    .conversation-item, .template-item, .template-gallery-card, .resource-item {{
+      border-color: rgba(167, 183, 210, 0.15);
+      background: rgba(255, 255, 255, 0.035);
+      transition: border-color var(--motion), background var(--motion), transform var(--motion);
+    }}
+    .conversation-item:hover, .template-item:hover, .template-gallery-card:hover, .resource-item:hover {{
+      border-color: rgba(124, 230, 195, 0.34);
+      background: rgba(124, 230, 195, 0.055);
+    }}
+    .conversation-item.active, .template-gallery-card.active, .file-item.selected {{
+      border-color: rgba(124, 230, 195, 0.48);
+      background: rgba(124, 230, 195, 0.09);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }}
+    .topbar {{
+      gap: 10px;
+      padding: 14px clamp(18px, 3vw, 42px) 12px;
+      background: rgba(8, 12, 19, 0.78);
+      border-bottom-color: rgba(167, 183, 210, 0.14);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+    }}
+    .topbar-head {{
+      min-height: 44px;
+    }}
+    .topbar h2 {{
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
+    }}
+    .topbar .meta {{
+      font-size: 0.8rem;
+    }}
+    .topbar-head .toolbar {{
+      gap: 6px;
+      max-width: 72%;
+    }}
+    .topbar-head .toolbar button {{
+      min-height: 38px;
+      padding: 8px 10px;
+      font-size: 0.75rem;
+    }}
+    .session-banner {{
+      gap: 8px;
+      padding: 11px 13px;
+      border-radius: 14px;
+      border-color: rgba(124, 230, 195, 0.18);
+      background: linear-gradient(90deg, rgba(124, 230, 195, 0.09), rgba(147, 169, 255, 0.055));
+    }}
+    .session-banner .eyebrow {{
+      margin-bottom: 5px;
+      font-size: 0.58rem;
+      letter-spacing: 0.15em;
+    }}
+    .session-banner h3 {{
+      font-size: 0.84rem;
+    }}
+    .session-banner p {{
+      margin-top: 4px;
+      font-size: 0.76rem;
+    }}
+    .status-pills {{
+      gap: 6px;
+    }}
+    .pill {{
+      padding: 6px 9px;
+      font-size: 0.72rem;
+      background: rgba(255, 255, 255, 0.045);
+    }}
+    #streaming-status {{
+      font-size: 0.76rem;
+    }}
+    .main {{
+      background: rgba(8, 12, 19, 0.16);
+    }}
+    .chat {{
+      width: min(980px, 100%);
+      gap: 18px;
+      padding: clamp(24px, 4vh, 42px) clamp(18px, 4vw, 58px) 26px;
+    }}
+    .message {{
+      max-width: min(780px, 100%);
+      padding: 16px 20px;
+      border-radius: 16px;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.13);
+    }}
+    .message.user {{
+      background: linear-gradient(145deg, rgba(33, 49, 84, 0.98), rgba(25, 38, 66, 0.96));
+      border-color: rgba(147, 169, 255, 0.23);
+    }}
+    .message.assistant {{
+      background: linear-gradient(145deg, rgba(19, 28, 43, 0.96), rgba(15, 23, 36, 0.96));
+      border-color: rgba(124, 230, 195, 0.16);
+    }}
+    .message .role {{
+      margin-bottom: 9px;
+      padding: 5px 9px;
+      font-size: 0.64rem;
+      letter-spacing: 0.12em;
+      background: rgba(255, 255, 255, 0.045);
+    }}
+    .message-content {{
+      gap: 0.72rem;
+      font-size: 0.94rem;
+      line-height: 1.68;
+    }}
+    .message-actions {{
+      opacity: 0.72;
+      transition: opacity var(--motion);
+    }}
+    .message:hover .message-actions, .message:focus-within .message-actions {{
+      opacity: 1;
+    }}
+    .message-actions button {{
+      min-height: 36px;
+      padding: 7px 10px;
+    }}
+    .chat-empty-card {{
+      border-radius: 20px;
+      border-color: rgba(124, 230, 195, 0.18);
+      background:
+        radial-gradient(circle at top left, rgba(124, 230, 195, 0.12), transparent 34%),
+        rgba(17, 23, 34, 0.86);
+    }}
+    .chat-empty-card h3 {{
+      letter-spacing: -0.03em;
+    }}
+    .composer {{
+      padding: 11px clamp(18px, 4vw, 42px) 18px;
+      background: linear-gradient(180deg, rgba(8, 12, 19, 0.76), rgba(8, 12, 19, 0.96));
+      border-top-color: rgba(167, 183, 210, 0.14);
+    }}
+    .composer form {{
+      width: min(980px, 100%);
+      gap: 10px;
+    }}
+    .composer-surface {{
+      gap: 8px;
+      padding: 9px 11px 10px;
+      border-radius: 18px;
+      border-color: rgba(167, 183, 210, 0.2);
+      background: linear-gradient(180deg, rgba(20, 28, 42, 0.94), rgba(13, 19, 29, 0.96));
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+    }}
+    .composer-surface textarea {{
+      min-height: 108px;
+      padding: 14px 15px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.025);
+      font-size: 0.98rem;
+    }}
+    .composer-surface textarea:focus {{
+      border-color: rgba(124, 230, 195, 0.46);
+      background: rgba(255, 255, 255, 0.04);
+    }}
+    .composer-actions {{
+      padding-top: 8px;
+      border-top: 1px solid rgba(167, 183, 210, 0.12);
+    }}
+    .composer-actions .hint {{
+      font-size: 0.74rem;
+    }}
+    .composer-actions > .toolbar button {{
+      min-width: 96px;
+    }}
+    .composer-strip {{
+      padding: 0 4px;
+    }}
+    .composer-strip .hint {{
+      min-width: 0;
+      font-size: 0.72rem;
+    }}
+    .template-drawer-panel, .file-preview, .shortcuts-dialog {{
+      border-color: rgba(167, 183, 210, 0.2);
+      background: rgba(14, 20, 31, 0.98);
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+    }}
+    .file-preview-backdrop, .shortcuts-backdrop, .template-drawer-backdrop {{
+      background: rgba(3, 6, 11, 0.78);
+    }}
+    .app.sidebar-collapsed {{
+      grid-template-columns: 76px minmax(0, 1fr);
+    }}
+    .app.sidebar-collapsed .sidebar {{
+      padding: 18px 9px 14px;
+    }}
+    .app.sidebar-collapsed .brand {{
+      padding: 6px 0 16px;
+    }}
+    .app.sidebar-collapsed .brand::before {{
+      position: static;
+      margin: 0 auto;
+    }}
+    .app.sidebar-collapsed .brand::after {{
+      display: none;
+    }}
+    .app.sidebar-collapsed .brand h1 {{
+      margin-top: 10px;
+      font-size: 0.72rem;
+      letter-spacing: 0;
+    }}
+    @media (max-width: 1180px) {{
+      .app {{
+        grid-template-columns: 248px minmax(0, 1fr);
+      }}
+      .topbar-head .toolbar {{
+        max-width: 100%;
+      }}
+    }}
+    @media (max-width: 980px) {{
+      .app, .app.sidebar-collapsed {{
+        grid-template-columns: 1fr;
+      }}
+      .sidebar {{
+        position: relative;
+        height: auto;
+        max-height: 58vh;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }}
+      .app.sidebar-collapsed .sidebar {{
+        display: none;
+      }}
+      .topbar-head {{
+        align-items: flex-start;
+      }}
+      .topbar-head .toolbar {{
+        width: 100%;
+        max-width: none;
+      }}
+      .session-banner {{
+        display: none;
+      }}
+    }}
+    @media (max-width: 640px) {{
+      .topbar {{
+        padding: 12px 14px 10px;
+      }}
+      .topbar-head {{
+        flex-direction: column;
+        gap: 10px;
+      }}
+      .topbar-head .toolbar {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      .topbar-head .toolbar > * {{
+        width: 100%;
+        max-width: none;
+      }}
+      .chat {{
+        padding: 20px 14px 22px;
+      }}
+      .message {{
+        max-width: 100%;
+        padding: 14px 16px;
+      }}
+      .composer {{
+        padding: 9px 14px 14px;
+      }}
+      .composer-actions {{
+        align-items: stretch;
+      }}
+      .composer-actions > .toolbar {{
+        width: 100%;
+      }}
+      .composer-actions > .toolbar button {{
+        flex: 1;
+      }}
+      .onboarding-grid {{
+        grid-template-columns: 1fr;
+      }}
+      .template-drawer-panel {{
+        top: 8px;
+        right: 8px;
+        bottom: 8px;
+        width: calc(100vw - 16px);
+        padding: 14px;
+        border-radius: 18px;
+      }}
+      .template-gallery-body {{
+        grid-template-columns: 1fr;
+      }}
+      .template-compare {{
+        padding-left: 0;
+      }}
+      .shortcut-row {{
+        grid-template-columns: 1fr;
+      }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+      *, *::before, *::after {{
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }}
+    }}
+    body[data-theme="light"] {{
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --panel-2: #eef2f7;
+      --line: rgba(30, 45, 68, 0.14);
+      --line-strong: rgba(30, 45, 68, 0.24);
+      --text: #152033;
+      --muted: #5c6b80;
+      --accent: #087f68;
+      --accent-2: #425fca;
+      --danger: #b93c55;
+      --bubble-user: #e2eaff;
+      --bubble-assistant: #ffffff;
+      --shadow: 0 22px 64px rgba(42, 59, 91, 0.14);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(8, 127, 104, 0.10), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(66, 95, 202, 0.10), transparent 28%),
+        linear-gradient(180deg, #fbfdff 0%, #eef3f9 100%);
+    }}
+    body[data-theme="light"] .sidebar {{
+      background: linear-gradient(180deg, rgba(250, 252, 255, 0.96), rgba(242, 246, 251, 0.94));
+      box-shadow: 18px 0 50px rgba(48, 64, 91, 0.06);
+    }}
+    body[data-theme="light"] .sidebar > .panel.stack, body[data-theme="light"] .panel {{
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 12px 34px rgba(48, 64, 91, 0.06);
+    }}
+    body[data-theme="light"] .workspace-hero {{
+      background: linear-gradient(145deg, rgba(8, 127, 104, 0.10), rgba(66, 95, 202, 0.07)), #ffffff;
+    }}
+    body[data-theme="light"] select, body[data-theme="light"] textarea, body[data-theme="light"] input {{
+      background: rgba(247, 249, 252, 0.96);
+      border-color: rgba(30, 45, 68, 0.16);
+    }}
+    body[data-theme="light"] select:focus, body[data-theme="light"] textarea:focus, body[data-theme="light"] input:focus {{
+      background: #ffffff;
+    }}
+    body[data-theme="light"] button.secondary {{
+      background: #f1f4f8;
+      border-color: rgba(30, 45, 68, 0.18);
+    }}
+    body[data-theme="light"] button.secondary:hover:not(:disabled) {{
+      background: #e8edf4;
+    }}
+    body[data-theme="light"] button.danger {{
+      color: #9f2f48;
+      background: rgba(185, 60, 85, 0.08);
+      border-color: rgba(185, 60, 85, 0.22);
+    }}
+    body[data-theme="light"] .topbar {{
+      background: rgba(250, 252, 255, 0.86);
+      box-shadow: 0 10px 28px rgba(48, 64, 91, 0.06);
+    }}
+    body[data-theme="light"] .main {{
+      background: rgba(255, 255, 255, 0.18);
+    }}
+    body[data-theme="light"] .session-banner {{
+      background: linear-gradient(90deg, rgba(8, 127, 104, 0.08), rgba(66, 95, 202, 0.06));
+    }}
+    body[data-theme="light"] .composer {{
+      background: linear-gradient(180deg, rgba(250, 252, 255, 0.84), rgba(244, 248, 252, 0.98));
+    }}
+    body[data-theme="light"] .composer-surface {{
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 252, 0.98));
+      box-shadow: 0 18px 44px rgba(48, 64, 91, 0.10);
+    }}
+    body[data-theme="light"] .composer-surface textarea {{
+      background: rgba(242, 246, 250, 0.72);
+    }}
+    body[data-theme="light"] .message.user {{
+      color: #172541;
+      background: linear-gradient(145deg, #e5ecff, #dce7fb);
+      border-color: rgba(66, 95, 202, 0.20);
+    }}
+    body[data-theme="light"] .message.assistant {{
+      background: rgba(255, 255, 255, 0.90);
+      border-color: rgba(8, 127, 104, 0.18);
+    }}
+    body[data-theme="light"] .message.system, body[data-theme="light"] .chat-empty-card {{
+      background: rgba(255, 255, 255, 0.92);
+    }}
+    body[data-theme="light"] .message-content pre, body[data-theme="light"] .resource-preview, body[data-theme="light"] .template-compare pre, body[data-theme="light"] .file-preview pre {{
+      background: #f2f5f9;
+      color: var(--text);
+    }}
+    body[data-theme="light"] .template-drawer-panel, body[data-theme="light"] .file-preview, body[data-theme="light"] .shortcuts-dialog {{
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 28px 90px rgba(48, 64, 91, 0.20);
+    }}
+    .main {{
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }}
+    .dashboard-view {{
+      grid-row: 1;
+      scroll-margin-top: 18px;
+    }}
+    .topbar {{
+      grid-row: 2;
+    }}
+    .chat {{
+      grid-row: 3;
+      scroll-margin-top: 18px;
+    }}
+    .composer {{
+      grid-row: 4;
+    }}
+    .app.sidebar-collapsed .sidebar > .dashboard-nav {{
+      display: grid;
+      padding: 4px;
+      border-color: rgba(167, 183, 210, 0.12);
+      background: rgba(13, 18, 28, 0.56);
+    }}
+    .app.sidebar-collapsed .dashboard-nav-title {{
+      display: none;
+    }}
+    .app.sidebar-collapsed .dashboard-nav button {{
+      justify-content: center;
+      min-height: 36px;
+      padding: 7px;
+      font-size: 0;
+    }}
+    .app.sidebar-collapsed .dashboard-nav button span, .app.sidebar-collapsed .dashboard-nav button small {{
+      display: none;
+    }}
+    .app.sidebar-collapsed .dashboard-nav button::before {{
+      margin: 0;
+      font-size: 1rem;
+    }}
+    .dashboard-nav {{
+      display: grid;
+      gap: 4px;
+      padding: 8px;
+      border: 1px solid rgba(167, 183, 210, 0.14);
+      border-radius: var(--radius-card);
+      background: rgba(13, 18, 28, 0.74);
+    }}
+    .dashboard-nav-title {{
+      padding: 2px 8px 6px;
+      color: var(--accent);
+      font-size: 0.58rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }}
+    .dashboard-nav button {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      box-shadow: none;
+      font-size: 0.76rem;
+      text-align: left;
+    }}
+    .dashboard-nav button::before {{
+      content: '•';
+      color: rgba(153, 167, 186, 0.62);
+      font-size: 1rem;
+      line-height: 0;
+    }}
+    .dashboard-nav button span {{
+      flex: 1;
+    }}
+    .dashboard-nav button small {{
+      color: rgba(153, 167, 186, 0.72);
+      font-size: 0.62rem;
+    }}
+    .dashboard-nav button:hover:not(:disabled), .dashboard-nav button.active {{
+      border-color: rgba(124, 230, 195, 0.24);
+      background: rgba(124, 230, 195, 0.09);
+      color: var(--text);
+      transform: none;
+    }}
+    .dashboard-nav button.active::before {{
+      color: var(--accent);
+    }}
+    .dashboard-view {{
+      display: grid;
+      gap: 14px;
+      width: min(1240px, 100%);
+      margin: 0 auto;
+      padding: 18px clamp(18px, 3vw, 42px) 12px;
+      overflow: auto;
+      border-bottom: 1px solid rgba(167, 183, 210, 0.10);
+    }}
+    .dashboard-page-header {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }}
+    .dashboard-page-header .eyebrow {{
+      margin-bottom: 6px;
+      color: var(--accent);
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }}
+    .dashboard-page-header h2 {{
+      margin: 0;
+      font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+      letter-spacing: -0.04em;
+    }}
+    .dashboard-page-header p {{
+      max-width: 70ch;
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }}
+    .dashboard-actions {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .dashboard-actions button {{
+      min-height: 38px;
+      padding: 8px 11px;
+      font-size: 0.74rem;
+    }}
+    .dashboard-live-badge, .dashboard-status-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      padding: 7px 10px;
+      border: 1px solid rgba(124, 230, 195, 0.22);
+      border-radius: 999px;
+      background: rgba(124, 230, 195, 0.08);
+      color: var(--accent);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }}
+    .dashboard-status-badge {{
+      color: var(--text);
+      border-color: rgba(147, 169, 255, 0.25);
+      background: rgba(147, 169, 255, 0.09);
+    }}
+    .dashboard-live-dot {{
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(124, 230, 195, 0.12);
+    }}
+    .dashboard-status-banner {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 11px 13px;
+      border: 1px solid rgba(124, 230, 195, 0.18);
+      border-radius: 14px;
+      background: linear-gradient(90deg, rgba(124, 230, 195, 0.09), rgba(147, 169, 255, 0.055));
+    }}
+    .dashboard-status-copy {{
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }}
+    .dashboard-status-copy strong {{
+      font-size: 0.82rem;
+    }}
+    .dashboard-status-copy span {{
+      color: var(--muted);
+      font-size: 0.74rem;
+      line-height: 1.4;
+    }}
+    .dashboard-metrics {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }}
+    .dashboard-metric {{
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      padding: 13px 14px;
+      border: 1px solid rgba(167, 183, 210, 0.14);
+      border-radius: 15px;
+      background: rgba(17, 23, 34, 0.72);
+    }}
+    .dashboard-metric-label {{
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
+    .dashboard-metric strong {{
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.38rem;
+      letter-spacing: -0.04em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-metric small {{
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 0.68rem;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-columns {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      gap: 12px;
+    }}
+    .dashboard-panel {{
+      display: grid;
+      align-content: start;
+      gap: 11px;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid rgba(167, 183, 210, 0.14);
+      border-radius: var(--radius-card);
+      background: rgba(17, 23, 34, 0.70);
+    }}
+    .dashboard-panel-header {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+    .dashboard-panel-kicker {{
+      color: var(--accent);
+      font-size: 0.58rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }}
+    .dashboard-panel h3 {{
+      margin: 3px 0 0;
+      font-size: 0.98rem;
+      letter-spacing: -0.02em;
+    }}
+    .dashboard-panel > p {{
+      margin: -4px 0 0;
+      color: var(--muted);
+      font-size: 0.75rem;
+      line-height: 1.45;
+    }}
+    .dashboard-runtime-chain {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }}
+    .dashboard-chain-step {{
+      position: relative;
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      padding: 11px;
+      border: 1px solid rgba(167, 183, 210, 0.13);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.035);
+    }}
+    .dashboard-chain-step:not(:last-child)::after {{
+      content: '→';
+      position: absolute;
+      top: 50%;
+      right: -14px;
+      z-index: 1;
+      color: var(--accent);
+      font-size: 0.9rem;
+      transform: translateY(-50%);
+    }}
+    .dashboard-chain-step span {{
+      color: var(--muted);
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
+    .dashboard-chain-step strong {{
+      overflow: hidden;
+      font-size: 0.78rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-panel-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }}
+    .dashboard-panel-actions button {{
+      min-height: 34px;
+      padding: 7px 10px;
+      font-size: 0.7rem;
+    }}
+    .dashboard-action-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }}
+    .dashboard-action {{
+      display: grid;
+      gap: 3px;
+      min-height: 64px;
+      padding: 10px;
+      border: 1px solid rgba(167, 183, 210, 0.14);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--text);
+      box-shadow: none;
+      text-align: left;
+    }}
+    .dashboard-action strong {{
+      font-size: 0.76rem;
+    }}
+    .dashboard-action span {{
+      color: var(--muted);
+      font-size: 0.67rem;
+      line-height: 1.35;
+    }}
+    .dashboard-action:hover:not(:disabled) {{
+      border-color: rgba(124, 230, 195, 0.34);
+      background: rgba(124, 230, 195, 0.08);
+      transform: translateY(-1px);
+    }}
+    .dashboard-activity-list, .dashboard-resource-list {{
+      display: grid;
+      gap: 6px;
+    }}
+    .dashboard-activity-item, .dashboard-resource-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid rgba(167, 183, 210, 0.11);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.028);
+      color: var(--text);
+      text-align: left;
+    }}
+    .dashboard-activity-item:hover:not(:disabled), .dashboard-resource-row:hover:not(:disabled) {{
+      border-color: rgba(124, 230, 195, 0.28);
+      background: rgba(124, 230, 195, 0.06);
+      transform: none;
+    }}
+    .dashboard-activity-item strong, .dashboard-resource-row strong {{
+      display: block;
+      overflow: hidden;
+      font-size: 0.74rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-activity-item small, .dashboard-resource-row small {{
+      display: block;
+      overflow: hidden;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 0.64rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-activity-item > span:last-child, .dashboard-resource-row > span:last-child {{
+      flex: 0 0 auto;
+      color: var(--accent);
+      font-size: 0.68rem;
+      font-weight: 800;
+    }}
+    .dashboard-empty {{
+      padding: 11px;
+      border: 1px dashed rgba(167, 183, 210, 0.18);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1.4;
+    }}
+    body[data-theme="light"] .dashboard-nav {{
+      background: rgba(255, 255, 255, 0.74);
+    }}
+    body[data-theme="light"] .dashboard-nav button:hover:not(:disabled), body[data-theme="light"] .dashboard-nav button.active {{
+      background: rgba(8, 127, 104, 0.08);
+    }}
+    body[data-theme="light"] .dashboard-metric, body[data-theme="light"] .dashboard-panel {{
+      background: rgba(255, 255, 255, 0.76);
+      box-shadow: 0 12px 30px rgba(48, 64, 91, 0.05);
+    }}
+    body[data-theme="light"] .dashboard-chain-step, body[data-theme="light"] .dashboard-action, body[data-theme="light"] .dashboard-activity-item, body[data-theme="light"] .dashboard-resource-row {{
+      background: rgba(242, 246, 250, 0.72);
+    }}
+    body[data-theme="light"] .dashboard-status-banner {{
+      background: linear-gradient(90deg, rgba(8, 127, 104, 0.08), rgba(66, 95, 202, 0.06));
+    }}
+    @media (max-width: 980px) {{
+      .dashboard-page-header {{
+        flex-direction: column;
+      }}
+      .dashboard-actions {{
+        justify-content: flex-start;
+      }}
+      .dashboard-columns {{
+        grid-template-columns: 1fr;
+      }}
+    }}
+    @media (max-width: 720px) {{
+      .dashboard-metrics {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      .dashboard-runtime-chain {{
+        grid-template-columns: 1fr;
+      }}
+      .dashboard-chain-step:not(:last-child)::after {{
+        content: '↓';
+        top: auto;
+        right: 50%;
+        bottom: -15px;
+        transform: translateX(50%);
+      }}
+      .dashboard-status-banner {{
+        align-items: flex-start;
+        flex-direction: column;
+      }}
+    }}
+    @media (max-width: 480px) {{
+      .dashboard-view {{
+        padding-right: 14px;
+        padding-left: 14px;
+      }}
+      .dashboard-metrics {{
+        grid-template-columns: 1fr;
+      }}
+      .dashboard-actions {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+      }}
+      .dashboard-actions > * {{
+        width: 100%;
+      }}
+      .dashboard-live-badge {{
+        grid-column: 1 / -1;
+        justify-content: center;
+      }}
+    }}
   </style>
 </head>
 <body>
+  <a class=\"skip-link\" href=\"#chat\">Skip to chat</a>
   <div class=\"app\" id=\"app\">
     <aside class=\"sidebar\">
       <div class=\"brand\">
         <h1>Qwen Gen Chat</h1>
         <p>Ready-to-use local chat interface driven by your qwen-gen settings.</p>
       </div>
+      <nav class=\"dashboard-nav\" aria-label=\"Workspace navigation\">
+        <div class=\"dashboard-nav-title\">Workspace</div>
+        <button type=\"button\" class=\"active\" aria-label=\"Dashboard\" title=\"Dashboard\" data-dashboard-target=\"dashboard-view\"><span>Dashboard</span><small>Overview</small></button>
+        <button type=\"button\" aria-label=\"Chat\" title=\"Chat\" data-dashboard-target=\"chat\"><span>Chat</span><small>Session</small></button>
+        <button type=\"button\" aria-label=\"Models\" title=\"Models\" data-dashboard-target=\"model-select\"><span>Models</span><small>Route</small></button>
+        <button type=\"button\" aria-label=\"Knowledge\" title=\"Knowledge\" data-dashboard-target=\"kb-query\"><span>Knowledge</span><small>RAG</small></button>
+        <button type=\"button\" aria-label=\"Agents\" title=\"Agents\" data-dashboard-target=\"agent-select\"><span>Agents</span><small>Presets</small></button>
+        <button type=\"button\" aria-label=\"Files\" title=\"Files\" data-dashboard-target=\"file-search\"><span>Files</span><small>Library</small></button>
+        <button type=\"button\" aria-label=\"Saved chats\" title=\"Saved chats\" data-dashboard-target=\"conversation-list\"><span>Saved chats</span><small>History</small></button>
+      </nav>
       <div class=\"workspace-hero\">
         <div>
           <div class=\"eyebrow\">Workspace overview</div>
@@ -10438,6 +11877,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             <button id=\"upload-files\" class=\"secondary\" type=\"button\">Upload files</button>
             <button id=\"clear-file-attachments\" class=\"secondary\" type=\"button\">Clear attachments</button>
           </div>
+          <div class=\"toolbar\">
+            <button id=\"file-select-visible\" class=\"secondary\" type=\"button\">Select visible</button>
+            <button id=\"file-clear-selection\" class=\"secondary\" type=\"button\">Clear selection</button>
+            <button id=\"file-delete-selected\" class=\"danger\" type=\"button\">Delete selected</button>
+          </div>
+          <div class=\"toolbar\">
+            <button id=\"file-clone-selected\" class=\"secondary\" type=\"button\">Clone selected</button>
+            <button id=\"file-export-selected\" class=\"secondary\" type=\"button\">Export selected</button>
+            <button id=\"file-tree-view\" class=\"secondary\" type=\"button\">Tree view</button>
+          </div>
           <div class=\"template-creator\">
             <input id=\"file-search\" type=\"search\" placeholder=\"Search files by name, tag, path, or content\">
             <button id=\"clear-file-search\" class=\"secondary\" type=\"button\">Clear</button>
@@ -10446,6 +11895,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             <button id=\"file-clone\" class=\"secondary\" type=\"button\">Clone</button>
           </div>
           <div class=\"hint\" id=\"selected-file-meta\">No attachments selected.</div>
+          <div class=\"hint\" id=\"file-selection-meta\">No files selected for library actions.</div>
           <div id=\"selected-file-chips\" class=\"chips\"></div>
           <select id=\"file-select\" multiple size=\"5\"></select>
         </div>
@@ -10517,6 +11967,105 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         <div class=\"status-pills\" id=\"status-pills\"></div>
         <div class=\"hint\" id=\"streaming-status\">Idle.</div>
       </header>
+      <section class=\"dashboard-view\" id=\"dashboard-view\" aria-labelledby=\"dashboard-title\">
+        <div class=\"dashboard-page-header\">
+          <div>
+            <div class=\"eyebrow\">Workspace dashboard</div>
+            <h2 id=\"dashboard-title\">Qwen Gen operations</h2>
+            <p>Monitor the local model route, fallback posture, saved work, and reusable resources from one calm overview.</p>
+          </div>
+          <div class=\"dashboard-actions\">
+            <span class=\"dashboard-live-badge\" id=\"dashboard-live-badge\"><span class=\"dashboard-live-dot\"></span>Local workspace</span>
+            <button id=\"dashboard-new-chat\" class=\"secondary\" type=\"button\">New chat</button>
+            <button id=\"dashboard-focus-chat\" class=\"secondary\" type=\"button\">Open chat</button>
+          </div>
+        </div>
+        <div class=\"dashboard-status-banner\" id=\"dashboard-status-banner\">
+          <div class=\"dashboard-status-copy\">
+            <strong id=\"dashboard-status-title\">Routing ready</strong>
+            <span id=\"dashboard-status-copy\">The workspace is ready to route prompts through the selected model.</span>
+          </div>
+          <span class=\"dashboard-status-badge\" id=\"dashboard-fallback-status\">Auto fallback: checking</span>
+        </div>
+        <div class=\"dashboard-metrics\" aria-label=\"Workspace metrics\">
+          <article class=\"dashboard-metric\">
+            <span class=\"dashboard-metric-label\">Models</span>
+            <strong id=\"dashboard-models-value\">0</strong>
+            <small id=\"dashboard-models-meta\">No routing targets yet</small>
+          </article>
+          <article class=\"dashboard-metric\">
+            <span class=\"dashboard-metric-label\">Providers</span>
+            <strong id=\"dashboard-providers-value\">0</strong>
+            <small id=\"dashboard-providers-meta\">Configured provider families</small>
+          </article>
+          <article class=\"dashboard-metric\">
+            <span class=\"dashboard-metric-label\">Saved chats</span>
+            <strong id=\"dashboard-chats-value\">0</strong>
+            <small id=\"dashboard-chats-meta\">Conversation history</small>
+          </article>
+          <article class=\"dashboard-metric\">
+            <span class=\"dashboard-metric-label\">Resources</span>
+            <strong id=\"dashboard-resources-value\">0</strong>
+            <small id=\"dashboard-resources-meta\">Files, knowledge, and presets</small>
+          </article>
+        </div>
+        <div class=\"dashboard-columns\">
+          <article class=\"dashboard-panel\">
+            <div class=\"dashboard-panel-header\">
+              <div>
+                <div class=\"dashboard-panel-kicker\">Runtime chain</div>
+                <h3>Models → fallback → chat</h3>
+              </div>
+              <span class=\"pill\" id=\"dashboard-primary-model\">No model selected</span>
+            </div>
+            <p id=\"dashboard-runtime-copy\">Select a configured model to begin a local session.</p>
+            <div class=\"dashboard-runtime-chain\">
+              <div class=\"dashboard-chain-step\"><span>Primary</span><strong id=\"dashboard-runtime-model\">Not selected</strong></div>
+              <div class=\"dashboard-chain-step\"><span>Router</span><strong id=\"dashboard-runtime-fallback\">Fallback checking</strong></div>
+              <div class=\"dashboard-chain-step\"><span>Session</span><strong id=\"dashboard-runtime-session\">Ready</strong></div>
+            </div>
+            <div class=\"dashboard-panel-actions\">
+              <button class=\"secondary\" type=\"button\" data-dashboard-target=\"model-select\">Manage models</button>
+              <button class=\"secondary\" type=\"button\" data-dashboard-target=\"provider-chips\">Inspect providers</button>
+            </div>
+          </article>
+          <article class=\"dashboard-panel\">
+            <div class=\"dashboard-panel-header\">
+              <div>
+                <div class=\"dashboard-panel-kicker\">Command center</div>
+                <h3>Quick actions</h3>
+              </div>
+            </div>
+            <div class=\"dashboard-action-grid\">
+              <button class=\"dashboard-action\" type=\"button\" data-dashboard-target=\"prompt\"><strong>Start a chat</strong><span>Focus the composer and send a prompt.</span></button>
+              <button class=\"dashboard-action\" type=\"button\" data-dashboard-target=\"kb-query\"><strong>Search knowledge</strong><span>Query registered RAG sources.</span></button>
+              <button class=\"dashboard-action\" type=\"button\" data-dashboard-target=\"agent-select\"><strong>Use an agent</strong><span>Apply a reusable agent preset.</span></button>
+              <button class=\"dashboard-action\" type=\"button\" data-dashboard-target=\"file-search\"><strong>Open files</strong><span>Browse attachments and workspace files.</span></button>
+            </div>
+          </article>
+        </div>
+        <div class=\"dashboard-columns\">
+          <article class=\"dashboard-panel\">
+            <div class=\"dashboard-panel-header\">
+              <div>
+                <div class=\"dashboard-panel-kicker\">Activity</div>
+                <h3>Recent sessions</h3>
+              </div>
+              <button class=\"secondary\" type=\"button\" data-dashboard-target=\"conversation-list\">View all</button>
+            </div>
+            <div class=\"dashboard-activity-list\" id=\"dashboard-recent-chats\"></div>
+          </article>
+          <article class=\"dashboard-panel\">
+            <div class=\"dashboard-panel-header\">
+              <div>
+                <div class=\"dashboard-panel-kicker\">Workspace inventory</div>
+                <h3>Resources</h3>
+              </div>
+            </div>
+            <div class=\"dashboard-resource-list\" id=\"dashboard-resource-list\"></div>
+          </article>
+        </div>
+      </section>
       <section class=\"chat\" id=\"chat\"></section>
       <button id=\"scroll-latest\" class=\"secondary scroll-latest\" type=\"button\">Latest</button>
       <section class=\"composer\">
@@ -10527,6 +12076,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
               <div class=\"stack\">
                 <div class=\"hint\">Enter to send, Shift+Enter for a new line, or drag/paste files here to upload.</div>
                 <div class=\"hint\" id=\"voice-status\">Voice input is unavailable.</div>
+                <div class=\"row\">
+                  <select id=\"voice-select\" class=\"voice-select\" aria-label=\"Read aloud voice\">
+                    <option value=\"\">Default voice</option>
+                  </select>
+                </div>
               </div>
               <div class=\"toolbar\">
                 <button id=\"dictate-button\" class=\"secondary voice-toggle\" type=\"button\">Dictate</button>
@@ -10537,6 +12091,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
           <div class=\"composer-strip\">
             <div class=\"hint\" id=\"queue-status\">No queued messages.</div>
           </div>
+          <div id=\"composer-state\" class=\"composer-state\"></div>
         </form>
       </section>
     </main>
@@ -10599,6 +12154,21 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       </footer>
     </section>
   </div>
+  <div id=\"source-preview-backdrop\" class=\"file-preview-backdrop\" aria-hidden=\"true\">
+    <section class=\"file-preview\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"source-preview-title\">
+      <header>
+        <div>
+          <h3 id=\"source-preview-title\">Source preview</h3>
+          <div class=\"meta\" id=\"source-preview-meta\"></div>
+        </div>
+        <button id=\"close-source-preview\" class=\"secondary\" type=\"button\">Close</button>
+      </header>
+      <main id=\"source-preview-body\"></main>
+      <footer>
+        <button id=\"copy-source-preview\" class=\"secondary\" type=\"button\">Copy details</button>
+      </footer>
+    </section>
+  </div>
   <div id=\"shortcuts-backdrop\" class=\"shortcuts-backdrop\" aria-hidden=\"true\">
     <section class=\"shortcuts-dialog\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"shortcuts-title\">
       <header>
@@ -10658,6 +12228,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       webSearchResults: [],
       files: bootstrap.files || [],
       selectedFileId: localStorage.getItem('qwen-gen.chat.fileId') || '',
+      selectedFileIds: (() => {{
+        try {{
+          const raw = localStorage.getItem('qwen-gen.chat.fileSelection') || '[]';
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+        }} catch (err) {{
+          return [];
+        }}
+      }})(),
+      fileTreeView: localStorage.getItem('qwen-gen.chat.fileTreeView') !== '0',
       webSearchQuery: localStorage.getItem('qwen-gen.chat.webSearchQuery') || '',
       webSearchProvider: localStorage.getItem('qwen-gen.chat.webSearchProvider') || 'duckduckgo',
       webSearchFallback: localStorage.getItem('qwen-gen.chat.webSearchFallback') || '',
@@ -10672,12 +12252,13 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       compareEnabled: localStorage.getItem('qwen-gen.chat.compareEnabled') === '1',
       compareModel: localStorage.getItem('qwen-gen.chat.compareModel') || '',
       conversationFilter: localStorage.getItem('qwen-gen.chat.filter') || 'all',
-      sidebarCollapsed: localStorage.getItem('qwen-gen.chat.sidebarCollapsed') !== '0',
+      sidebarCollapsed: localStorage.getItem('qwen-gen.chat.sidebarPreference') === 'collapsed',
       themeMode: localStorage.getItem('qwen-gen.chat.themeMode') || 'dark',
       templateDrawerOpen: false,
       templateSearch: localStorage.getItem('qwen-gen.chat.templateSearch') || '',
       templateFilter: localStorage.getItem('qwen-gen.chat.templateFilter') || 'all',
       templateCompareId: localStorage.getItem('qwen-gen.chat.templateCompareId') || '',
+      voiceSpeakVoice: localStorage.getItem('qwen-gen.chat.voiceSpeakVoice') || '',
       voiceListening: false,
       voiceRecognitionSupported: Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
       messageSearchIndex: 0,
@@ -10689,6 +12270,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       themeToggle: document.getElementById('theme-toggle'),
       newChatHeader: document.getElementById('new-chat-header'),
       dictateButton: document.getElementById('dictate-button'),
+      voiceSelect: document.getElementById('voice-select'),
       compareToggle: document.getElementById('compare-model-toggle'),
       compareModelSelect: document.getElementById('compare-model-select'),
       addProviderPresets: document.getElementById('add-provider-presets'),
@@ -10742,6 +12324,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       fileImport: document.getElementById('file-import'),
       fileExport: document.getElementById('file-export'),
       fileClone: document.getElementById('file-clone'),
+      fileSelectVisible: document.getElementById('file-select-visible'),
+      fileClearSelection: document.getElementById('file-clear-selection'),
+      fileDeleteSelected: document.getElementById('file-delete-selected'),
+      fileCloneSelected: document.getElementById('file-clone-selected'),
+      fileExportSelected: document.getElementById('file-export-selected'),
       agentImportFile: document.getElementById('agent-import-file'),
       agentImport: document.getElementById('agent-import'),
       agentExport: document.getElementById('agent-export'),
@@ -10860,6 +12447,28 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       workspaceModelCount: document.getElementById('workspace-model-count'),
       workspaceTemplateCount: document.getElementById('workspace-template-count'),
       workspaceChatCount: document.getElementById('workspace-chat-count'),
+      dashboardView: document.getElementById('dashboard-view'),
+      dashboardLiveBadge: document.getElementById('dashboard-live-badge'),
+      dashboardStatusTitle: document.getElementById('dashboard-status-title'),
+      dashboardStatusCopy: document.getElementById('dashboard-status-copy'),
+      dashboardFallbackStatus: document.getElementById('dashboard-fallback-status'),
+      dashboardModelsValue: document.getElementById('dashboard-models-value'),
+      dashboardModelsMeta: document.getElementById('dashboard-models-meta'),
+      dashboardProvidersValue: document.getElementById('dashboard-providers-value'),
+      dashboardProvidersMeta: document.getElementById('dashboard-providers-meta'),
+      dashboardChatsValue: document.getElementById('dashboard-chats-value'),
+      dashboardChatsMeta: document.getElementById('dashboard-chats-meta'),
+      dashboardResourcesValue: document.getElementById('dashboard-resources-value'),
+      dashboardResourcesMeta: document.getElementById('dashboard-resources-meta'),
+      dashboardPrimaryModel: document.getElementById('dashboard-primary-model'),
+      dashboardRuntimeCopy: document.getElementById('dashboard-runtime-copy'),
+      dashboardRuntimeModel: document.getElementById('dashboard-runtime-model'),
+      dashboardRuntimeFallback: document.getElementById('dashboard-runtime-fallback'),
+      dashboardRuntimeSession: document.getElementById('dashboard-runtime-session'),
+      dashboardRecentChats: document.getElementById('dashboard-recent-chats'),
+      dashboardResourceList: document.getElementById('dashboard-resource-list'),
+      dashboardNewChat: document.getElementById('dashboard-new-chat'),
+      dashboardFocusChat: document.getElementById('dashboard-focus-chat'),
       prompt: document.getElementById('prompt'),
       systemPrompt: document.getElementById('system-prompt'),
       templateName: document.getElementById('template-name'),
@@ -10873,8 +12482,10 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       fileUpload: document.getElementById('file-upload'),
       uploadFiles: document.getElementById('upload-files'),
       clearFileAttachments: document.getElementById('clear-file-attachments'),
+      fileTreeView: document.getElementById('file-tree-view'),
       selectedFileChips: document.getElementById('selected-file-chips'),
       selectedFileMeta: document.getElementById('selected-file-meta'),
+      fileSelectionMeta: document.getElementById('file-selection-meta'),
       conversationTitle: document.getElementById('conversation-title'),
       conversationSearch: document.getElementById('conversation-search'),
       conversationFilterAll: document.getElementById('conversation-filter-all'),
@@ -10913,6 +12524,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       filePreviewBody: document.getElementById('file-preview-body'),
       closeFilePreview: document.getElementById('close-file-preview'),
       copyFilePreview: document.getElementById('copy-file-preview'),
+      sourcePreviewBackdrop: document.getElementById('source-preview-backdrop'),
+      sourcePreviewTitle: document.getElementById('source-preview-title'),
+      sourcePreviewMeta: document.getElementById('source-preview-meta'),
+      sourcePreviewBody: document.getElementById('source-preview-body'),
+      closeSourcePreview: document.getElementById('close-source-preview'),
+      copySourcePreview: document.getElementById('copy-source-preview'),
       shortcutsBackdrop: document.getElementById('shortcuts-backdrop'),
       shortcutsHelp: document.getElementById('shortcuts-help'),
       closeShortcuts: document.getElementById('close-shortcuts'),
@@ -10933,6 +12550,8 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       stopChat: document.getElementById('stop-chat'),
       saveTemplate: document.getElementById('save-template'),
       resetTemplate: document.getElementById('reset-template'),
+      composerState: document.getElementById('composer-state'),
+      sendButton: document.getElementById('send-button'),
     }};
     let activeAbortController = null;
     let editingMessageIndex = null;
@@ -10951,6 +12570,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     let dragDepth = 0;
     let pasteDepth = 0;
     let previewFile = null;
+    let previewSource = null;
     function save() {{
       localStorage.setItem('qwen-gen.chat.activeId', state.activeId || '');
       localStorage.setItem('qwen-gen.chat.model', state.currentModel || '');
@@ -10964,6 +12584,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       localStorage.setItem('qwen-gen.chat.templateSearch', state.templateSearch || '');
       localStorage.setItem('qwen-gen.chat.templateFilter', state.templateFilter || 'all');
       localStorage.setItem('qwen-gen.chat.templateCompareId', state.templateCompareId || '');
+      localStorage.setItem('qwen-gen.chat.voiceSpeakVoice', state.voiceSpeakVoice || '');
       localStorage.setItem('qwen-gen.chat.webSearchQuery', state.webSearchQuery || '');
       localStorage.setItem('qwen-gen.chat.webSearchProvider', state.webSearchProvider || 'duckduckgo');
       localStorage.setItem('qwen-gen.chat.webSearchFallback', state.webSearchFallback || '');
@@ -10973,9 +12594,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       localStorage.setItem('qwen-gen.chat.webSearchDescription', state.webSearchDescription || '');
       localStorage.setItem('qwen-gen.chat.webSearchSaveLimit', String(state.webSearchSaveLimit || 5));
       localStorage.setItem('qwen-gen.chat.fileSearch', state.fileSearch || '');
+      localStorage.setItem('qwen-gen.chat.fileSelection', JSON.stringify(state.selectedFileIds || []));
+      localStorage.setItem('qwen-gen.chat.fileTreeView', state.fileTreeView ? '1' : '0');
     }}
     function setSidebarCollapsed(collapsed) {{
       state.sidebarCollapsed = Boolean(collapsed);
+      localStorage.setItem('qwen-gen.chat.sidebarPreference', state.sidebarCollapsed ? 'collapsed' : 'expanded');
       els.app.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
       if (els.toggleSidebar) {{
         els.toggleSidebar.textContent = state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
@@ -11002,13 +12626,47 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     }}
     function renderVoiceControls() {{
       if (!els.dictateButton || !els.voiceStatus) return;
+      if (els.voiceSelect) {{
+        const voices = availableSpeechVoices();
+        const current = state.voiceSpeakVoice || '';
+        const options = ['<option value=\"\">Default voice</option>'];
+        for (const voice of voices) {{
+          const label = [
+            voice.name || 'Voice',
+            voice.lang || '',
+            voice.default ? 'default' : '',
+          ].filter(Boolean).join(' · ');
+          const value = voice.voiceURI || voice.name || label;
+          options.push(`<option value=\"${{escapeHtml(value)}}\">${{escapeHtml(label)}}</option>`);
+        }}
+        els.voiceSelect.innerHTML = options.join('');
+        if ([...els.voiceSelect.options].some((option) => option.value === current)) {{
+          els.voiceSelect.value = current;
+        }} else if (!options.length) {{
+          els.voiceSelect.value = '';
+        }}
+        els.voiceSelect.disabled = !state.voiceRecognitionSupported || !voices.length;
+      }}
       els.dictateButton.disabled = !state.voiceRecognitionSupported;
       els.dictateButton.textContent = state.voiceListening ? 'Stop dictation' : 'Dictate';
       els.voiceStatus.textContent = state.voiceRecognitionSupported
         ? (state.voiceListening
           ? 'Listening for speech input.'
-          : 'Voice input is ready.')
+          : 'Voice input is ready. Choose a read-aloud voice or use the browser default.')
         : 'Voice input is unavailable in this browser.';
+    }}
+    function availableSpeechVoices() {{
+      if (!('speechSynthesis' in window)) return [];
+      return Array.isArray(window.speechSynthesis.getVoices()) ? window.speechSynthesis.getVoices() : [];
+    }}
+    function selectedSpeechVoice() {{
+      const voices = availableSpeechVoices();
+      const selected = String(state.voiceSpeakVoice || '').trim();
+      if (selected) {{
+        const match = voices.find((voice) => String(voice.voiceURI || voice.name || '') === selected);
+        if (match) return match;
+      }}
+      return voices.find((voice) => voice.default) || voices[0] || null;
     }}
     function ensureVoiceRecognition() {{
       if (window.__qwenVoiceRecognition) return window.__qwenVoiceRecognition;
@@ -11083,6 +12741,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(content);
       utterance.lang = navigator.language || 'en-US';
+      const voice = selectedSpeechVoice();
+      if (voice) {{
+        utterance.voice = voice;
+        if (voice.lang) utterance.lang = voice.lang;
+      }}
       window.speechSynthesis.speak(utterance);
     }}
     function setStreaming(active) {{
@@ -11590,7 +13253,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     }}
     function textToList(value) {{
       return String(value || '')
-        .split(/[\n,]/)
+        .split(/[\\n,]/)
         .map((entry) => entry.trim())
         .filter(Boolean);
     }}
@@ -12789,10 +14452,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       els.statusPills.innerHTML = '';
       const convo = activeConversation();
       const pills = [];
+      const primaryModel = convo?.model || state.currentModel || bootstrap.selectedModel || '';
+      const compareModelMatchesPrimary = !!state.compareEnabled && !!state.compareModel && state.compareModel === primaryModel;
       if (activeAbortController) {{
         pills.push({{ label: 'Stream', value: 'live' }});
       }}
-      pills.push({{ label: 'Model', value: convo?.model || state.currentModel || bootstrap.selectedModel || 'not set' }});
+      pills.push({{ label: 'Model', value: primaryModel || 'not set' }});
       if (convo) {{
         pills.push({{ label: 'Pinned', value: convo.pinned ? 'yes' : 'no' }});
         pills.push({{ label: 'Archived', value: convo.archived ? 'yes' : 'no' }});
@@ -12806,7 +14471,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         pills.push({{ label: 'Agent', value: agent ? (agent.name || agent.id) : state.currentAgentId }});
       }}
       if (state.compareEnabled) {{
-        pills.push({{ label: 'Compare', value: state.compareModel || 'enabled' }});
+        pills.push({{ label: 'Compare', value: compareModelMatchesPrimary ? 'needs different model' : (state.compareModel || 'enabled') }});
       }}
       pills.push({{ label: 'Files', value: String(selectedFiles().length) }});
       for (const pill of pills) {{
@@ -13050,6 +14715,298 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     function selectedFiles() {{
       return Array.from(els.fileSelect.selectedOptions).map((option) => option.value);
     }}
+    function selectedFileIds() {{
+      return Array.from(new Set((state.selectedFileIds || []).map((value) => String(value)))).filter(Boolean);
+    }}
+    function setSelectedFileIds(fileIds) {{
+      state.selectedFileIds = Array.from(new Set((fileIds || []).map((value) => String(value)))).filter(Boolean);
+      save();
+      renderFiles();
+    }}
+    function visibleFileRecords() {{
+      const query = String(state.fileSearch || '').trim().toLowerCase();
+      return (state.files || []).filter((file) => {{
+        if (!query) return true;
+        return [file.id, file.name, file.kind, file.path, file.description, file.content]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query))
+          || (Array.isArray(file.tags) && file.tags.some((tag) => String(tag).toLowerCase().includes(query)));
+      }});
+    }}
+    function selectedFileRecords() {{
+      const ids = new Set(selectedFileIds());
+      return (state.files || []).filter((file) => ids.has(String(file.id || '')));
+    }}
+    function selectVisibleFiles() {{
+      setSelectedFileIds(visibleFileRecords().map((file) => file.id).filter(Boolean));
+    }}
+    function clearSelectedFileSelection() {{
+      setSelectedFileIds([]);
+    }}
+    async function exportSelectedFilesToFile() {{
+      const files = selectedFileRecords();
+      if (!files.length) {{
+        window.alert('Select one or more files first.');
+        return;
+      }}
+      downloadText('selected-files.json', JSON.stringify({{ files }}, null, 2) + '\\n', 'application/json;charset=utf-8');
+    }}
+    async function cloneSelectedFiles() {{
+      const files = selectedFileRecords();
+      if (!files.length) {{
+        window.alert('Select one or more files first.');
+        return;
+      }}
+      const clonedIds = [];
+      for (const file of files) {{
+        const response = await fetch('/api/ai/files', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{ action: 'clone', id: file.id }}),
+        }});
+        if (!response.ok) {{
+          const data = await response.json().catch(() => ({{}}));
+          throw new Error(data.error || response.statusText || 'File clone failed');
+        }}
+        const data = await response.json();
+        if (data.data && data.data.file && data.data.file.id) {{
+          clonedIds.push(data.data.file.id);
+        }}
+      }}
+      await refreshFiles();
+      setSelectedFileIds(clonedIds);
+      if (clonedIds.length) {{
+        state.selectedFileId = clonedIds[0];
+      }}
+      renderAll();
+    }}
+    async function deleteSelectedFiles() {{
+      const files = selectedFileRecords();
+      if (!files.length) {{
+        window.alert('Select one or more files first.');
+        return;
+      }}
+      if (!window.confirm(`Delete ${{files.length}} selected file${{files.length === 1 ? '' : 's'}}?`)) return;
+      for (const file of files) {{
+        await deleteFile(file.id);
+      }}
+      clearSelectedFileSelection();
+      renderAll();
+    }}
+    function filePathParts(file) {{
+      const raw = String(file && (file.path || file.name || file.id) || '').replaceAll('\\\\', '/').trim();
+      if (!raw) return [];
+      return raw.split('/').map((part) => part.trim()).filter(Boolean);
+    }}
+    function fileTreeRoot(files) {{
+      const root = {{ name: '', path: '', dirs: new Map(), files: [] }};
+      for (const file of files || []) {{
+        const parts = filePathParts(file);
+        if (parts.length <= 1) {{
+          root.files.push(file);
+          continue;
+        }}
+        let node = root;
+        let currentPath = '';
+        for (const segment of parts.slice(0, -1)) {{
+          currentPath = currentPath ? `${{currentPath}}/${{segment}}` : segment;
+          if (!node.dirs.has(segment)) {{
+            node.dirs.set(segment, {{ name: segment, path: currentPath, dirs: new Map(), files: [] }});
+          }}
+          node = node.dirs.get(segment);
+        }}
+        node.files.push(file);
+      }}
+      return root;
+    }}
+    function sortFilesByPath(files) {{
+      return (files || []).slice().sort((a, b) => {{
+        const left = String((a && (a.path || a.name || a.id)) || '').toLowerCase();
+        const right = String((b && (b.path || b.name || b.id)) || '').toLowerCase();
+        return left.localeCompare(right);
+      }});
+    }}
+    function renderFileRow(file, selectedFile, librarySelection) {{
+      const row = document.createElement('div');
+      const isSelected = librarySelection.has(String(file.id || ''));
+      row.className = 'file-item' + (isSelected ? ' selected' : '');
+      const selectToggle = document.createElement('button');
+      selectToggle.type = 'button';
+      selectToggle.className = 'secondary select-toggle';
+      selectToggle.textContent = isSelected ? 'Selected' : 'Select';
+      selectToggle.title = isSelected
+        ? 'Remove file from the library selection.'
+        : 'Add file to the library selection.';
+      selectToggle.addEventListener('click', (event) => {{
+        event.stopPropagation();
+        const next = new Set(selectedFileIds());
+        if (next.has(file.id)) {{
+          next.delete(file.id);
+        }} else {{
+          next.add(file.id);
+        }}
+        setSelectedFileIds(Array.from(next));
+      }});
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip' + (String(file.id || '') === String(selectedFile.id || '') ? ' active' : '');
+      chip.textContent = file.name || file.id;
+      chip.title = fileSummary(file) || file.description || file.kind || file.id;
+      chip.addEventListener('click', () => {{
+        state.selectedFileId = file.id || '';
+        const next = new Set(selectedFiles());
+        if (next.has(file.id)) {{
+          next.delete(file.id);
+        }} else {{
+          next.add(file.id);
+        }}
+        setSelectedFiles(Array.from(next));
+        persistActiveFields();
+        renderAll();
+      }});
+      const preview = document.createElement('button');
+      preview.type = 'button';
+      preview.className = 'secondary';
+      preview.title = 'Preview file';
+      preview.textContent = 'Preview';
+      preview.addEventListener('click', (event) => {{
+        event.stopPropagation();
+        state.selectedFileId = file.id || '';
+        openFilePreview(file.id);
+      }});
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'danger';
+      remove.title = 'Delete file';
+      remove.textContent = '×';
+      remove.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        if (window.confirm(`Delete ${{file.name || file.id}}?`)) {{
+          try {{
+            await deleteFile(file.id);
+          }} catch (err) {{
+            window.alert(String(err.message || err));
+          }}
+        }}
+      }});
+      const shareMd = document.createElement('button');
+      shareMd.type = 'button';
+      shareMd.className = 'secondary';
+      shareMd.textContent = 'Share MD';
+      shareMd.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        await downloadSharedItem('files', file, 'md');
+      }});
+      const shareHtml = document.createElement('button');
+      shareHtml.type = 'button';
+      shareHtml.className = 'secondary';
+      shareHtml.textContent = 'Share HTML';
+      shareHtml.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        await downloadSharedItem('files', file, 'html');
+      }});
+      const shareJson = document.createElement('button');
+      shareJson.type = 'button';
+      shareJson.className = 'secondary';
+      shareJson.textContent = 'Share JSON';
+      shareJson.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        await downloadSharedItem('files', file, 'json');
+      }});
+      const clone = document.createElement('button');
+      clone.type = 'button';
+      clone.className = 'secondary';
+      clone.textContent = 'Clone';
+      clone.title = 'Clone file';
+      clone.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        state.selectedFileId = file.id || '';
+        try {{
+          const response = await fetch('/api/ai/files', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ action: 'clone', id: file.id }}),
+          }});
+          if (!response.ok) {{
+            const data = await response.json().catch(() => ({{}}));
+            throw new Error(data.error || response.statusText || 'File clone failed');
+          }}
+          const data = await response.json();
+          await refreshFiles();
+          state.selectedFileId = data.data && data.data.file && data.data.file.id ? data.data.file.id : state.selectedFileId;
+          renderAll();
+        }} catch (err) {{
+          window.alert(String(err.message || err));
+        }}
+      }});
+      row.appendChild(selectToggle);
+      row.appendChild(chip);
+      row.appendChild(preview);
+      row.appendChild(remove);
+      row.appendChild(shareMd);
+      row.appendChild(shareHtml);
+      row.appendChild(shareJson);
+      row.appendChild(clone);
+      row.appendChild(document.createElement('div')).textContent = fileSummary(file) || file.description || 'File';
+      return row;
+    }}
+    function renderFileTree(container, tree, selectedFile, librarySelection, depth = 0) {{
+      const directoryEntries = Array.from(tree.dirs.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const fileEntries = sortFilesByPath(tree.files);
+      for (const dir of directoryEntries) {{
+        const details = document.createElement('details');
+        details.className = 'file-tree-dir';
+        details.open = depth < 1;
+        const summary = document.createElement('summary');
+        summary.className = 'file-tree-summary';
+        summary.textContent = dir.name;
+        const meta = document.createElement('span');
+        meta.className = 'muted';
+        const childCount = (dir.files ? dir.files.length : 0) + (dir.dirs ? dir.dirs.size : 0);
+        meta.textContent = `${{childCount}} item${{childCount === 1 ? '' : 's'}}`;
+        summary.appendChild(meta);
+        const body = document.createElement('div');
+        body.className = 'file-tree-children';
+        renderFileTree(body, dir, selectedFile, librarySelection, depth + 1);
+        details.appendChild(summary);
+        details.appendChild(body);
+        container.appendChild(details);
+      }}
+      for (const file of fileEntries) {{
+        const row = renderFileRow(file, selectedFile, librarySelection);
+        row.style.marginLeft = depth ? `${{depth * 14}}px` : '0';
+        container.appendChild(row);
+      }}
+    }}
+    function conversationSnippet(convo) {{
+      const messages = Array.isArray(convo.messages) ? convo.messages : [];
+      const lastMessage = messages.length ? messages[messages.length - 1] : null;
+      const preview = lastMessage && lastMessage.content ? String(lastMessage.content).trim().replace(/\\s+/g, ' ') : '';
+      const snippet = preview.length > 140 ? `${{preview.slice(0, 137)}}...` : preview;
+      const parts = [
+        `${{messages.length}} message${{messages.length === 1 ? '' : 's'}}`,
+        convo.folderId ? `workspace: ${{folderLabel(convo.folderId)}}` : '',
+        convo.pinned ? 'pinned' : '',
+        convo.archived ? 'archived' : '',
+        convo.model || bootstrap.selectedModel || '',
+        convo.systemPrompt ? 'prompt' : '',
+        convo.files && convo.files.length ? `${{convo.files.length}} file${{convo.files.length === 1 ? '' : 's'}}` : '',
+      ].filter(Boolean);
+      return {{
+        summary: parts.join(' · '),
+        snippet: snippet || (lastMessage ? `${{lastMessage.role || 'assistant'}} message` : 'Empty transcript'),
+      }};
+    }}
+    function conversationContextStart(convo) {{
+      const raw = Number(convo && convo.clearContextIndex);
+      if (!Number.isFinite(raw) || raw < 0) return 0;
+      return Math.floor(raw);
+    }}
+    function conversationContextMessages(convo) {{
+      const messages = Array.isArray(convo && convo.messages) ? convo.messages : [];
+      const start = conversationContextStart(convo);
+      return start > 0 ? messages.slice(start) : messages.slice();
+    }}
     function extensionForFile(name) {{
       const parts = String(name || '').split('.');
       return parts.length > 1 ? parts.pop().toLowerCase() : '';
@@ -13060,15 +15017,39 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (ext) return ext;
       return 'file';
     }}
+    async function isLikelyTextFile(file) {{
+      try {{
+        const chunk = await file.slice(0, 8192).arrayBuffer();
+        const bytes = new Uint8Array(chunk);
+        if (!bytes.length) return false;
+        if (bytes.includes(0)) return false;
+        new TextDecoder('utf-8', {{ fatal: true }}).decode(bytes);
+        return true;
+      }} catch (err) {{
+        return false;
+      }}
+    }}
     function readLocalFile(file) {{
       return new Promise((resolve, reject) => {{
         const reader = new FileReader();
         reader.onerror = () => reject(new Error(`Unable to read ${{file.name}}`));
         reader.onload = () => resolve(reader.result);
-        if (file.type.startsWith('text/') || file.type === 'application/json' || file.type === 'application/xml') {{
+        if (
+          file.type.startsWith('text/') ||
+          file.type === 'application/json' ||
+          file.type === 'application/xml' ||
+          file.type === 'application/javascript' ||
+          file.type === 'application/typescript'
+        ) {{
           reader.readAsText(file);
         }} else {{
-          reader.readAsDataURL(file);
+          void isLikelyTextFile(file).then((textLike) => {{
+            if (textLike) {{
+              reader.readAsText(file);
+            }} else {{
+              reader.readAsDataURL(file);
+            }}
+          }});
         }}
       }});
     }}
@@ -13133,6 +15114,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (String(state.selectedFileId || '') === String(fileId || '')) {{
         state.selectedFileId = state.files[0]?.id || '';
       }}
+      state.selectedFileIds = selectedFileIds().filter((item) => String(item) !== String(fileId || ''));
       for (const convo of state.conversations) {{
         if (Array.isArray(convo.files)) {{
           convo.files = convo.files.filter((item) => item !== fileId);
@@ -13162,6 +15144,13 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       previewFile = null;
       els.filePreviewBackdrop.classList.remove('open');
       els.filePreviewBackdrop.setAttribute('aria-hidden', 'true');
+    }}
+    function closeSourcePreview() {{
+      previewSource = null;
+      if (els.sourcePreviewBackdrop) {{
+        els.sourcePreviewBackdrop.classList.remove('open');
+        els.sourcePreviewBackdrop.setAttribute('aria-hidden', 'true');
+      }}
     }}
     function openShortcutsHelp() {{
       els.shortcutsBackdrop.classList.add('open');
@@ -13201,6 +15190,45 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       }}
       els.filePreviewBackdrop.classList.add('open');
       els.filePreviewBackdrop.setAttribute('aria-hidden', 'false');
+    }}
+    function describeSource(source) {{
+      const title = String(source && (source.title || source.name || source.label || source.id || 'Source')).trim();
+      const url = String(source && (source.url || source.href || source.link || '')).trim();
+      const details = [];
+      if (source && typeof source === 'object') {{
+        for (const key of ['snippet', 'content', 'text', 'description']) {{
+          if (typeof source[key] === 'string' && source[key].trim()) {{
+            details.push(`${{key}}: ${{source[key].trim()}}`);
+          }}
+        }}
+      }}
+      return {{ title, url, details: details.join('\\n\\n') }};
+    }}
+    function openSourcePreview(source) {{
+      if (!source || !els.sourcePreviewBackdrop) return;
+      previewSource = source;
+      const details = describeSource(source);
+      if (els.sourcePreviewTitle) els.sourcePreviewTitle.textContent = details.title || 'Source preview';
+      if (els.sourcePreviewMeta) {{
+        els.sourcePreviewMeta.textContent = details.url
+          ? details.url
+          : (source.id ? `Source id: ${{source.id}}` : 'Assistant source reference');
+      }}
+      const parts = [];
+      if (details.url) {{
+        parts.push(`<div class=\"resource-item\"><strong>URL</strong><div class=\"muted\">${{escapeHtml(details.url)}}</div></div>`);
+      }}
+      if (details.details) {{
+        parts.push(`<pre>${{escapeHtml(details.details)}}</pre>`);
+      }}
+      if (source && typeof source === 'object') {{
+        parts.push(`<pre>${{escapeHtml(JSON.stringify(source, null, 2))}}</pre>`);
+      }}
+      if (els.sourcePreviewBody) {{
+        els.sourcePreviewBody.innerHTML = parts.join('') || '<div class=\"muted\">No additional source details available.</div>';
+      }}
+      els.sourcePreviewBackdrop.classList.add('open');
+      els.sourcePreviewBackdrop.setAttribute('aria-hidden', 'false');
     }}
     function persistActiveFields() {{
       const convo = activeConversation();
@@ -13293,6 +15321,20 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     function renderModels() {{
       els.modelSelect.innerHTML = '';
       els.compareModelSelect.innerHTML = '';
+      els.modelSelect.disabled = !state.models.length;
+      els.compareModelSelect.disabled = !state.models.length;
+      if (!state.models.length) {{
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'No models configured';
+        placeholder.selected = true;
+        els.modelSelect.appendChild(placeholder);
+        els.compareModelSelect.appendChild(placeholder.cloneNode(true));
+        state.currentModel = '';
+        state.compareModel = '';
+        return;
+      }}
+      const primaryModelId = els.modelSelect.value || state.currentModel || bootstrap.selectedModel || '';
       for (const model of state.models) {{
         const opt = document.createElement('option');
         opt.value = model.id;
@@ -13302,7 +15344,10 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
 
         const compareOpt = document.createElement('option');
         compareOpt.value = model.id;
-        compareOpt.textContent = `${{model.id}} — ${{model.providerName || model.provider}}`;
+        compareOpt.textContent = model.id === primaryModelId
+          ? `${{model.id}} — ${{model.providerName || model.provider}} (current model)`
+          : `${{model.id}} — ${{model.providerName || model.provider}}`;
+        compareOpt.disabled = model.id === primaryModelId;
         els.compareModelSelect.appendChild(compareOpt);
       }}
       if (!els.modelSelect.value && state.models.length) {{
@@ -13310,15 +15355,38 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       }}
       state.currentModel = els.modelSelect.value || state.currentModel;
       if (!els.compareModelSelect.value && state.models.length) {{
-        const fallback = state.models.find((model) => model.id !== els.modelSelect.value)?.id || state.models[1]?.id || state.models[0]?.id || '';
+        const fallback = state.models.find((model) => model.id !== (els.modelSelect.value || state.currentModel || bootstrap.selectedModel || ''))?.id || state.models[1]?.id || state.models[0]?.id || '';
         els.compareModelSelect.value = state.compareModel || fallback || '';
+      }}
+      if (els.compareModelSelect.value && els.compareModelSelect.value === (els.modelSelect.value || state.currentModel || bootstrap.selectedModel || '')) {{
+        const compareFallback = state.models.find((model) => model.id !== els.compareModelSelect.value)?.id || '';
+        els.compareModelSelect.value = compareFallback || '';
       }}
       state.compareModel = els.compareModelSelect.value || state.compareModel;
     }}
     function renderProviders() {{
       els.providerChips.innerHTML = '';
       if (!state.models.length) {{
-        els.providerChips.innerHTML = '<span class=\"muted\">No provider models configured.</span>';
+        els.providerChips.innerHTML = `
+          <div class=\"provider-empty\">
+            <strong>No provider models configured.</strong>
+            <p>Add presets to populate the model selector, compare mode, and workspace counts.</p>
+            <div class=\"toolbar\">
+              <button type=\"button\" class=\"secondary\" id=\"provider-empty-add\">Add presets</button>
+              <button type=\"button\" class=\"secondary\" id=\"provider-empty-refresh\">Refresh</button>
+            </div>
+          </div>
+        `;
+        els.providerChips.querySelector('#provider-empty-add')?.addEventListener('click', async () => {{
+          try {{
+            await addProviderPresets();
+          }} catch (err) {{
+            window.alert(String(err.message || err));
+          }}
+        }});
+        els.providerChips.querySelector('#provider-empty-refresh')?.addEventListener('click', () => {{
+          renderAll();
+        }});
         return;
       }}
       for (const model of state.models) {{
@@ -13354,6 +15422,77 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         row.appendChild(remove);
         els.providerChips.appendChild(row);
       }}
+    }}
+    function renderComposerState() {{
+      const hasModels = !!state.models.length;
+      const canCompare = state.models.length > 1;
+      const compareModelMatchesPrimary = !!state.compareEnabled && !!state.compareModel && state.compareModel === (els.modelSelect?.value || state.currentModel || bootstrap.selectedModel || '');
+      if (els.sendButton) {{
+        els.sendButton.disabled = !hasModels || compareModelMatchesPrimary;
+        els.sendButton.title = hasModels
+          ? (compareModelMatchesPrimary
+            ? 'Choose a different compare model before sending'
+            : 'Send the prompt to the selected model')
+          : 'Add a provider preset before sending a chat message';
+      }}
+      if (els.compareToggle) {{
+        els.compareToggle.disabled = !canCompare;
+        els.compareToggle.title = canCompare
+          ? 'Enable compare mode with a second model'
+          : 'Compare mode needs at least two configured models';
+      }}
+      if (!canCompare) {{
+        state.compareEnabled = false;
+        state.compareModel = '';
+        if (els.compareToggle) els.compareToggle.checked = false;
+        if (els.compareModelSelect) els.compareModelSelect.value = '';
+      }}
+      if (els.prompt) {{
+        els.prompt.placeholder = hasModels
+          ? 'Ask Qwen something...'
+          : 'Add a model first, then ask Qwen something...';
+      }}
+      if (hasModels && canCompare && !compareModelMatchesPrimary) {{
+        if (els.composerState) els.composerState.innerHTML = '';
+        return;
+      }}
+      if (!els.composerState) return;
+      els.composerState.innerHTML = compareModelMatchesPrimary
+        ? `
+          <strong>Compare mode needs a different second model.</strong>
+          <p>Choose another model in the compare selector so the prompt can be sent to two distinct backends.</p>
+          <div class=\"toolbar\">
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-add\">Add presets</button>
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-templates\">Templates</button>
+          </div>
+        `
+        : hasModels
+        ? `
+          <strong>Compare mode needs two models.</strong>
+          <p>Add one more provider preset to enable side-by-side comparison from the same composer.</p>
+          <div class=\"toolbar\">
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-add\">Add presets</button>
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-templates\">Templates</button>
+          </div>
+        `
+        : `
+          <strong>No model is selected yet.</strong>
+          <p>Add provider presets to populate the model list, then start a chat or compare two models from the same composer.</p>
+          <div class=\"toolbar\">
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-add\">Add presets</button>
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-templates\">Templates</button>
+          </div>
+        `;
+      els.composerState.querySelector('#composer-empty-add')?.addEventListener('click', async () => {{
+        try {{
+          await addProviderPresets();
+        }} catch (err) {{
+          window.alert(String(err.message || err));
+        }}
+      }});
+      els.composerState.querySelector('#composer-empty-templates')?.addEventListener('click', () => {{
+        setTemplateDrawerOpen(true);
+      }});
     }}
     function combinedPromptTemplates() {{
       return [
@@ -13415,17 +15554,17 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       const current = String(els.systemPrompt.value || '').trim();
       const candidate = String(template.content || '').trim();
       if (!current && !candidate) return 'No prompt content to compare.';
-      const currentLines = current.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-      const candidateLines = candidate.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+      const currentLines = current.split(/\\n+/).map((line) => line.trim()).filter(Boolean);
+      const candidateLines = candidate.split(/\\n+/).map((line) => line.trim()).filter(Boolean);
       const added = candidateLines.filter((line) => !currentLines.includes(line));
       const removed = currentLines.filter((line) => !candidateLines.includes(line));
       const shared = candidateLines.filter((line) => currentLines.includes(line));
       const parts = [];
       parts.push(`Shared lines: ${{shared.length}}`);
-      if (added.length) parts.push(`Added preview:\n${{added.slice(0, 6).map((line) => `+ ${{line}}`).join('\n')}}`);
-      if (removed.length) parts.push(`Removed preview:\n${{removed.slice(0, 6).map((line) => `- ${{line}}`).join('\n')}}`);
+      if (added.length) parts.push(`Added preview:\\n${{added.slice(0, 6).map((line) => `+ ${{line}}`).join('\\n')}}`);
+      if (removed.length) parts.push(`Removed preview:\\n${{removed.slice(0, 6).map((line) => `- ${{line}}`).join('\\n')}}`);
       if (!added.length && !removed.length) parts.push('The selected template matches the current prompt.');
-      return parts.join('\n\n');
+      return parts.join('\\n\\n');
     }}
     function setTemplateDrawerOpen(open) {{
       state.templateDrawerOpen = Boolean(open);
@@ -13789,14 +15928,21 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (els.fileSearch && els.fileSearch.value !== state.fileSearch) {{
         els.fileSearch.value = state.fileSearch || '';
       }}
-      const query = String(state.fileSearch || '').trim().toLowerCase();
-      const visibleFiles = (state.files || []).filter((file) => {{
-        if (!query) return true;
-        return [file.id, file.name, file.kind, file.path, file.description, file.content]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(query))
-          || (Array.isArray(file.tags) && file.tags.some((tag) => String(tag).toLowerCase().includes(query)));
-      }});
+      if (els.fileTreeView) {{
+        els.fileTreeView.textContent = state.fileTreeView ? 'Flat view' : 'Tree view';
+        els.fileTreeView.classList.toggle('active', state.fileTreeView);
+        els.fileTreeView.setAttribute('aria-pressed', state.fileTreeView ? 'true' : 'false');
+      }}
+      if (els.fileChips) {{
+        els.fileChips.classList.toggle('file-tree', state.fileTreeView);
+      }}
+      const visibleFiles = visibleFileRecords();
+      const librarySelection = new Set(selectedFileIds());
+      if (els.fileSelectionMeta) {{
+        els.fileSelectionMeta.textContent = librarySelection.size
+          ? `${{librarySelection.size}} file${{librarySelection.size === 1 ? '' : 's'}} selected for library actions.`
+          : 'No files selected for library actions.';
+      }}
       if (!visibleFiles.length) {{
         els.fileChips.innerHTML = '<span class=\"muted\">No files in registry.</span>';
         els.selectedFileMeta.textContent = 'No attachments selected.';
@@ -13834,110 +15980,13 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         }});
         els.selectedFileChips.appendChild(chip);
       }}
+      if (state.fileTreeView) {{
+        const tree = fileTreeRoot(visibleFiles);
+        renderFileTree(els.fileChips, tree, selectedFile, librarySelection);
+        return;
+      }}
       for (const file of visibleFiles) {{
-        const row = document.createElement('div');
-        row.className = 'file-item';
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'chip' + (String(file.id || '') === String(selectedFile.id || '') ? ' active' : '');
-        chip.textContent = file.name || file.id;
-        chip.title = fileSummary(file) || file.description || file.kind || file.id;
-        chip.addEventListener('click', () => {{
-          state.selectedFileId = file.id || '';
-          const next = new Set(selectedFiles());
-          if (next.has(file.id)) {{
-            next.delete(file.id);
-          }} else {{
-            next.add(file.id);
-          }}
-          setSelectedFiles(Array.from(next));
-          persistActiveFields();
-          renderAll();
-        }});
-        const preview = document.createElement('button');
-        preview.type = 'button';
-        preview.className = 'secondary';
-        preview.title = 'Preview file';
-        preview.textContent = 'Preview';
-        preview.addEventListener('click', (event) => {{
-          event.stopPropagation();
-          state.selectedFileId = file.id || '';
-          openFilePreview(file.id);
-        }});
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'danger';
-        remove.title = 'Delete file';
-        remove.textContent = '×';
-        remove.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          if (window.confirm(`Delete ${{file.name || file.id}}?`)) {{
-            try {{
-              await deleteFile(file.id);
-            }} catch (err) {{
-              window.alert(String(err.message || err));
-            }}
-          }}
-        }});
-        const shareMd = document.createElement('button');
-        shareMd.type = 'button';
-        shareMd.className = 'secondary';
-        shareMd.textContent = 'Share MD';
-        shareMd.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          await downloadSharedItem('files', file, 'md');
-        }});
-        const shareHtml = document.createElement('button');
-        shareHtml.type = 'button';
-        shareHtml.className = 'secondary';
-        shareHtml.textContent = 'Share HTML';
-        shareHtml.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          await downloadSharedItem('files', file, 'html');
-        }});
-        const shareJson = document.createElement('button');
-        shareJson.type = 'button';
-        shareJson.className = 'secondary';
-        shareJson.textContent = 'Share JSON';
-        shareJson.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          await downloadSharedItem('files', file, 'json');
-        }});
-        row.appendChild(chip);
-        row.appendChild(preview);
-        row.appendChild(remove);
-        row.appendChild(shareMd);
-        row.appendChild(shareHtml);
-        row.appendChild(shareJson);
-        const clone = document.createElement('button');
-        clone.type = 'button';
-        clone.className = 'secondary';
-        clone.textContent = 'Clone';
-        clone.title = 'Clone file';
-        clone.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          state.selectedFileId = file.id || '';
-          try {{
-            const response = await fetch('/api/ai/files', {{
-              method: 'POST',
-              headers: {{ 'Content-Type': 'application/json' }},
-              body: JSON.stringify({{ action: 'clone', id: file.id }}),
-            }});
-            if (!response.ok) {{
-              const data = await response.json().catch(() => ({{}}));
-              throw new Error(data.error || response.statusText || 'File clone failed');
-            }}
-            const data = await response.json();
-            await refreshFiles();
-            state.selectedFileId = data.data && data.data.file && data.data.file.id ? data.data.file.id : state.selectedFileId;
-            renderAll();
-          }} catch (err) {{
-            window.alert(String(err.message || err));
-          }}
-        }});
-        row.appendChild(clone);
-        row.appendChild(document.createElement('div')).textContent = fileSummary(file) || file.description || 'File';
-        els.fileChips.appendChild(row);
+        els.fileChips.appendChild(renderFileRow(file, selectedFile, librarySelection));
       }}
     }}
     function renderConversationList() {{
@@ -13967,29 +16016,39 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         return String(a.title || a.id || '').localeCompare(String(b.title || b.id || ''));
       }});
       if (!visible.length) {{
-        els.conversationList.innerHTML = `<span class=\"muted\">${{query ? 'No chats match your search.' : 'No saved chats yet.'}}</span>`;
+        els.conversationList.innerHTML = `
+          <div class=\"conversation-empty\">
+            <strong>${{query ? 'No chats match your search.' : 'No saved chats yet.'}}</strong>
+            <p>${{query
+              ? 'Clear the search or start a new conversation to show items here again.'
+              : 'Create the first conversation, then pin, archive, export, or share it from here.'}}</p>
+            <div class=\"toolbar\">
+              <button type=\"button\" class=\"secondary\" id=\"conversation-empty-new\">New chat</button>
+              <button type=\"button\" class=\"secondary\" id=\"conversation-empty-templates\">Templates</button>
+            </div>
+          </div>
+        `;
+        els.conversationList.querySelector('#conversation-empty-new')?.addEventListener('click', () => {{
+          newConversation();
+          renderAll();
+        }});
+        els.conversationList.querySelector('#conversation-empty-templates')?.addEventListener('click', () => {{
+          setTemplateDrawerOpen(true);
+        }});
         return;
       }}
       for (const convo of visible) {{
         const item = document.createElement('div');
         item.className = 'conversation-item' + (convo.id === state.activeId ? ' active' : '');
-        const summary = [
-          convo.folderId ? `workspace: ${{folderLabel(convo.folderId)}}` : '',
-          convo.pinned ? 'pinned' : '',
-          convo.archived ? 'archived' : '',
-          convo.model || bootstrap.selectedModel || '',
-          convo.systemPrompt ? 'prompt' : '',
-          convo.files && convo.files.length ? `${{convo.files.length}} file(s)` : '',
-        ]
-          .filter(Boolean)
-          .join(' · ');
+        const details = conversationSnippet(convo);
         item.innerHTML = `
           <div class=\"conversation-item-body\">
             <div>
               <button type=\"button\" class=\"conversation-item-select\">
                 <strong>${{escapeHtml(convo.title || convo.id)}}</strong>
               </button>
-              <small>${{escapeHtml(summary || convo.id)}}</small>
+              <small>${{escapeHtml(details.summary || convo.id)}}</small>
+              <div class=\"conversation-item-snippet\">${{escapeHtml(details.snippet)}}</div>
             </div>
             <div class=\"conversation-item-actions\">
               <button type=\"button\" data-action=\"pin\">${{convo.pinned ? 'Unpin' : 'Pin'}}</button>
@@ -14052,6 +16111,19 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         .replace(/~~([^~]+)~~/g, '<del>$1</del>')
         .replace(/\\$(?!\\s)([^$\\n]+?)\\$(?!\\d)/g, '<span class=\"math\">$1</span>')
         .replace(
+          /\\[\\^([^\\]]+)\\]/g,
+          (_, footnoteId) =>
+            '<sup class=\"footnote-ref\"><a href=\"#footnote-' +
+            escapeHtml(String(footnoteId || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-')) +
+            '\">[' +
+            escapeHtml(String(footnoteId || '').trim()) +
+            ']</a></sup>'
+        )
+        .replace(
+          /\\[(\\d+)\\]/g,
+          '<button type=\"button\" class=\"citation\" data-citation-index=\"$1\">[$1]</button>'
+        )
+        .replace(
           /\\[([^\\]]+)\\]\\(([^)]+)\\)/g,
           (_, label, href) =>
             '<a href=\"' +
@@ -14059,7 +16131,89 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             '\" target=\"_blank\" rel=\"noreferrer\">' +
             label +
             '</a>'
-        );
+        )
+        .replace(/(^|[^\\w/])([@#$])([A-Za-z_][\\w.-]{{0,63}})/g, (_, prefix, sigil, token) => {{
+          const kind = sigil === '@' ? 'at' : (sigil === '#' ? 'hash' : 'dollar');
+          return prefix + '<span class=\"mention mention-' + kind + '\">' + sigil + token + '</span>';
+        }});
+    }}
+    function normalizeMessageSources(value) {{
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((item, index) => {{
+          if (!item) return null;
+          if (typeof item === 'string') {{
+            const url = item.trim();
+            if (!url) return null;
+            return {{
+              id: `source-${{index + 1}}`,
+              title: url,
+              url,
+            }};
+          }}
+          if (typeof item === 'object') {{
+            const url = String(item.url || item.href || item.link || item.source || '').trim();
+            const title = String(item.title || item.name || item.label || item.id || url || `Source ${{index + 1}}`).trim();
+            const id = String(item.id || item.sourceId || item.reference || `source-${{index + 1}}`).trim();
+            if (!title && !url && !id) return null;
+            return {{
+              ...item,
+              id,
+              title: title || url || id,
+              url,
+            }};
+          }}
+          return null;
+        }})
+        .filter(Boolean);
+    }}
+    function extractMessageSources(payload) {{
+      if (!payload || typeof payload !== 'object') return [];
+      const message = payload && payload.choices && payload.choices[0] && payload.choices[0].message ? payload.choices[0].message : null;
+      return normalizeMessageSources(
+        (message && (message.sources || message.citations)) ||
+        payload.sources ||
+        payload.citations ||
+        payload.sourceIds ||
+        []
+      );
+    }}
+    function renderMessageSources(sources) {{
+      const normalized = normalizeMessageSources(sources);
+      if (!normalized.length) return null;
+      const section = document.createElement('div');
+      section.className = 'message-sources';
+      const title = document.createElement('div');
+      title.className = 'message-sources-title';
+      title.textContent = 'Sources';
+      const list = document.createElement('div');
+      list.className = 'message-sources-list';
+      normalized.forEach((source, index) => {{
+        const chip = document.createElement('button');
+        chip.className = 'message-source-chip';
+        chip.type = 'button';
+        chip.title = source.url ? 'Open source preview' : 'Inspect source reference';
+        chip.addEventListener('click', () => {{
+          openSourcePreview(source);
+        }});
+        const label = document.createElement('span');
+        label.textContent = source.title || source.id || `Source ${{index + 1}}`;
+        chip.appendChild(label);
+        if (source.url) {{
+          const meta = document.createElement('span');
+          meta.className = 'muted';
+          try {{
+            meta.textContent = new URL(source.url).hostname || source.url;
+          }} catch (err) {{
+            meta.textContent = source.url;
+          }}
+          chip.appendChild(meta);
+        }}
+        list.appendChild(chip);
+      }});
+      section.appendChild(title);
+      section.appendChild(list);
+      return section;
     }}
     function renderMarkdown(value) {{
       const source = String(value || '').replace(/\\r\\n/g, '\\n');
@@ -14074,6 +16228,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       let inTable = false;
       let tableHeader = [];
       let tableRows = [];
+      let inCallout = false;
+      let calloutTitle = '';
+      let calloutLines = [];
+      let pendingFootnoteId = '';
+      let pendingFootnoteLines = [];
+      const footnotes = [];
       const flushTable = () => {{
         if (!inTable) return;
         const headerHtml = tableHeader.map((cell) => '<th>' + renderInline(cell.trim()) + '</th>').join('');
@@ -14084,6 +16244,28 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         inTable = false;
         tableHeader = [];
         tableRows = [];
+      }};
+      const flushCallout = () => {{
+        if (!inCallout) return;
+        const body = calloutLines.length ? renderMarkdown(calloutLines.join('\\n')) : '';
+        blocks.push(
+          '<aside class=\"callout\">' +
+            '<div class=\"callout-title\">' + escapeHtml(calloutTitle || 'note') + '</div>' +
+            '<div class=\"callout-body\">' + body + '</div>' +
+          '</aside>'
+        );
+        inCallout = false;
+        calloutTitle = '';
+        calloutLines = [];
+      }};
+      const flushFootnote = () => {{
+        if (!pendingFootnoteId) return;
+        footnotes.push({{
+          id: pendingFootnoteId,
+          body: pendingFootnoteLines.join('\\n').trim(),
+        }});
+        pendingFootnoteId = '';
+        pendingFootnoteLines = [];
       }};
       const flushParagraph = () => {{
         if (!paragraph.length) return;
@@ -14096,6 +16278,26 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         blocks.push('<' + tag + '>' + listItems.join('') + '</' + tag + '>');
         listType = '';
         listItems = [];
+      }};
+      const flushFootnotes = () => {{
+        flushFootnote();
+        if (!footnotes.length) return;
+        const items = footnotes.map((footnote) => {{
+          const safeId = String(footnote.id || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+          const body = footnote.body ? renderMarkdown(footnote.body) : '';
+          return (
+            '<li id=\"footnote-' + safeId + '\">' +
+              '<div>' + body + '</div>' +
+              '<a class=\"footnote-backref\" href=\"#footnotes\" aria-label=\"Back to footnotes\">↩</a>' +
+            '</li>'
+          );
+        }}).join('');
+        blocks.push(
+          '<section id=\"footnotes\" class=\"footnotes\">' +
+            '<strong>Footnotes</strong>' +
+            '<ol>' + items + '</ol>' +
+          '</section>'
+        );
       }};
       const flushCode = () => {{
         const encoded = encodeURIComponent(codeLines.join('\\n'));
@@ -14116,6 +16318,8 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         flushParagraph();
         flushList();
         flushTable();
+        flushCallout();
+        flushFootnote();
       }};
       for (const rawLine of lines) {{
         const line = rawLine.trimEnd();
@@ -14135,6 +16339,40 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
           codeLines.push(rawLine);
           continue;
         }}
+        const calloutFence = line.match(/^:::\\s*(.*)$/);
+        if (calloutFence) {{
+          if (inCallout) {{
+            flushBlockState();
+          }} else {{
+            flushBlockState();
+            inCallout = true;
+            calloutTitle = calloutFence[1].trim();
+          }}
+          continue;
+        }}
+        if (inCallout) {{
+          calloutLines.push(rawLine);
+          continue;
+        }}
+        const footnoteDef = rawLine.match(/^\\[\\^([^\\]]+)\\]:\\s*(.*)$/);
+        if (footnoteDef) {{
+          flushBlockState();
+          flushFootnote();
+          pendingFootnoteId = footnoteDef[1].trim();
+          pendingFootnoteLines = [footnoteDef[2].trim()];
+          continue;
+        }}
+        if (pendingFootnoteId) {{
+          if (/^(?:\\s{{4,}}|\\t)/.test(rawLine)) {{
+            pendingFootnoteLines.push(rawLine.replace(/^(?:\\s{{4}}|\\t)/, ''));
+            continue;
+          }}
+          if (!line.trim()) {{
+            pendingFootnoteLines.push('');
+            continue;
+          }}
+          flushFootnote();
+        }}
         if (!line.trim()) {{
           flushBlockState();
           continue;
@@ -14144,7 +16382,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
           blocks.push('<hr>');
           continue;
         }}
-        const tableDivider = /^[|]?(?:\\s*:?-{3,}:?\\s*[|])+\\s*:?-{3,}:?\\s*[|]?$/.test(line);
+        const tableDivider = /^[|]?(?:\\s*:?-{{3,}}:?\\s*[|])+\\s*:?-{{3,}}:?\\s*[|]?$/.test(line);
         const tableRow = /^\\s*[|].*[|]\\s*$/.test(line);
         if (tableRow) {{
           const cells = line.trim().replace(/^[|]/, '').replace(/[|]$/, '').split('|');
@@ -14165,7 +16403,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         if (inTable && !tableDivider && !tableRow) {{
           flushTable();
         }}
-        const heading = line.match(/^(#{1,4})\\s+(.*)$/);
+        const heading = line.match(/^(#{{1,4}})\\s+(.*)$/);
         if (heading) {{
           flushBlockState();
           const level = heading[1].length;
@@ -14217,6 +16455,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         flushCode();
       }}
       flushBlockState();
+      flushFootnotes();
       return blocks.join('');
     }}
     function applySearchHighlights(root, query) {{
@@ -14261,7 +16500,21 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       const convo = activeConversation();
       els.chat.innerHTML = '';
       if (!convo || !convo.messages || !convo.messages.length) {{
-        const firstLoad = !state.models.length && !state.conversations.length;
+        const missingModels = !state.models.length;
+        const missingConversations = !state.conversations.length;
+        const firstLoad = missingModels && missingConversations;
+        const workspaceNeedsSetup = missingModels || missingConversations;
+        const workspaceBadges = [
+          missingModels
+            ? '<span class=\"onboarding-badge missing\">No models configured</span>'
+            : '<span class=\"onboarding-badge ready\">' + escapeHtml(String(state.models.length)) + ' models ready</span>',
+          missingConversations
+            ? '<span class=\"onboarding-badge missing\">No conversations yet</span>'
+            : '<span class=\"onboarding-badge ready\">' + escapeHtml(String(state.conversations.length)) + ' conversations ready</span>',
+          state.promptTemplates.length
+            ? '<span class=\"onboarding-badge ready\">' + escapeHtml(String(state.promptTemplates.length)) + ' templates available</span>'
+            : '<span class=\"onboarding-badge missing\">No saved templates</span>',
+        ].join('');
         const starterChips = starterPromptTemplates.map((template) => `
           <button type=\"button\" class=\"chip\" data-starter-template=\"${{escapeHtml(template.id)}}\">${{escapeHtml(template.name)}}</button>
         `).join('');
@@ -14285,13 +16538,32 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         ];
         els.chat.innerHTML = `
           <div class=\"chat-empty\">
-            <div class=\"chat-empty-card ${{firstLoad ? 'onboarding' : ''}}\">
+            <div class=\"chat-empty-card ${{workspaceNeedsSetup ? 'onboarding' : ''}}\">
               <div class=\"onboarding-top\">
-                <div class=\"eyebrow\">${{firstLoad ? 'First load onboarding' : 'Ready for use'}}</div>
-                <h3>${{firstLoad ? 'Set up your first workspace' : 'Open a model, load a template, or start a new conversation.'}}</h3>
+                <div class=\"eyebrow\">${{firstLoad ? 'First load onboarding' : workspaceNeedsSetup ? 'Workspace setup required' : 'Ready for use'}}</div>
+                <h3>${{firstLoad
+                  ? 'Set up your first workspace'
+                  : workspaceNeedsSetup
+                    ? 'Seed the missing pieces before you chat'
+                    : 'Open a model, load a template, or start a new conversation.'}}</h3>
                 <p>${{firstLoad
                   ? 'No models and no conversations are configured yet. Use the setup actions below to seed the workspace and start chatting in one pass.'
-                  : 'This workspace is already wired for prompts, files, agents, and history. Use the quick actions below to begin with one click.'}}</p>
+                  : workspaceNeedsSetup
+                    ? 'This workspace is missing ' +
+                      (missingModels ? 'models' : '') +
+                      (missingModels && missingConversations ? ' and ' : '') +
+                      (missingConversations ? 'conversations' : '') +
+                      '. Use the setup actions below to get to a runnable state quickly.'
+                    : 'This workspace is already wired for prompts, files, agents, and history. Use the quick actions below to begin with one click.'}}</p>
+              </div>
+              <div class=\"onboarding-summary\">
+                <header>
+                  <h4>Workspace status</h4>
+                  <p>${{workspaceNeedsSetup
+                    ? 'The interface is ready, but the workspace needs a model target and a conversation history to feel fully loaded.'
+                    : 'Everything is configured for immediate use.'}}</p>
+                </header>
+                <div class=\"onboarding-badges\">${{workspaceBadges}}</div>
               </div>
               <div class=\"chat-empty-actions\">
                 <button type=\"button\" class=\"secondary\" id=\"chat-empty-focus\">Focus prompt</button>
@@ -14376,6 +16648,25 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         }}
         const role = message.role || 'assistant';
         const content = message.content || '';
+        const contextStart = conversationContextStart(convo);
+        if (contextStart && index === contextStart) {{
+          const divider = document.createElement('div');
+          divider.className = 'clear-context-divider';
+          divider.innerHTML = `
+            <span><strong>Context cleared above.</strong> Earlier messages stay in the transcript but are excluded from future requests.</span>
+          `;
+          const revert = document.createElement('button');
+          revert.type = 'button';
+          revert.className = 'secondary';
+          revert.textContent = 'Revert';
+          revert.addEventListener('click', () => {{
+            convo.clearContextIndex = null;
+            void saveConversation(convo);
+            renderAll();
+          }});
+          divider.appendChild(revert);
+          els.chat.appendChild(divider);
+        }}
         const header = document.createElement('div');
         header.className = 'message-header';
         const roleLabel = document.createElement('span');
@@ -14422,6 +16713,17 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             beginEditMessage(index);
           }});
           actions.appendChild(editButton);
+          const clearContextButton = document.createElement('button');
+          clearContextButton.type = 'button';
+          clearContextButton.className = 'secondary';
+          clearContextButton.textContent = convo.clearContextIndex === index + 1 ? 'Context cut' : 'Clear context';
+          clearContextButton.title = 'Keep the transcript, but start future requests from the next message.';
+          clearContextButton.addEventListener('click', () => {{
+            convo.clearContextIndex = index + 1;
+            void saveConversation(convo);
+            renderAll();
+          }});
+          actions.appendChild(clearContextButton);
         }}
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
@@ -14484,8 +16786,26 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
               await copyText(decodeURIComponent(button.dataset.codeCopy || ''));
             }});
           }});
+          if (role === 'assistant') {{
+            const sources = normalizeMessageSources(message.sources || message.citations || []);
+            contentWrap.querySelectorAll('.citation[data-citation-index]').forEach((node) => {{
+              const rawIndex = Number(node.getAttribute('data-citation-index') || '0');
+              const source = rawIndex > 0 ? sources[rawIndex - 1] : null;
+              if (!source) return;
+              node.title = source.url ? `Open source ${{rawIndex}} preview` : `Inspect source ${{rawIndex}}`;
+              node.addEventListener('click', () => {{
+                openSourcePreview(source);
+              }});
+            }});
+          }}
           applySearchHighlights(contentWrap, searchQuery);
           block.appendChild(contentWrap);
+          if (role === 'assistant') {{
+            const sourceSection = renderMessageSources(message.sources || message.citations || []);
+            if (sourceSection) {{
+              block.appendChild(sourceSection);
+            }}
+          }}
         }}
         els.chat.appendChild(block);
       }});
@@ -14531,8 +16851,108 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       for (const message of convo.messages || []) {{
         transcriptParts.push(String(message && message.content ? message.content : ''));
       }}
-      const estimated = estimateTokenCount(transcriptParts.join('\n'));
+      const estimated = estimateTokenCount(transcriptParts.join('\\n'));
       return `Token estimate: ~${{estimated}}`;
+    }}
+    function dashboardCount(value, singular, plural) {{
+      const count = Number(value) || 0;
+      return `${{count}} ${{count === 1 ? singular : (plural || `${{singular}}s`)}}`;
+    }}
+    function dashboardConversationTimestamp(convo) {{
+      const raw = convo && (convo.updatedAt || convo.updated_at || convo.createdAt || convo.created_at);
+      const timestamp = raw ? Date.parse(String(raw)) : 0;
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    }}
+    function focusDashboardTarget(targetId) {{
+      const id = String(targetId || '').replace(/^#/, '');
+      if (!id) return;
+      const sidebarTargetIds = new Set([
+        'model-select', 'provider-chips', 'kb-query', 'agent-select', 'file-search', 'conversation-list',
+        'skill-chips', 'memory-chips', 'note-chips', 'artifact-chips', 'tool-chips',
+      ]);
+      if (sidebarTargetIds.has(id) && state.sidebarCollapsed) {{
+        setSidebarCollapsed(false);
+      }}
+      const target = document.getElementById(id);
+      if (!target) return;
+      document.querySelectorAll('.dashboard-nav button[data-dashboard-target]').forEach((button) => {{
+        button.classList.toggle('active', button.dataset.dashboardTarget === id);
+      }});
+      target.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+      if (id === 'prompt') {{
+        window.setTimeout(() => els.prompt.focus(), 180);
+      }}
+    }}
+    function renderDashboard() {{
+      const models = Array.isArray(state.models) ? state.models : [];
+      const providers = new Set(
+        models.map((model) => String(model.providerName || model.provider || '').trim()).filter(Boolean)
+      );
+      const conversations = Array.isArray(state.conversations) ? state.conversations : [];
+      const currentModelId = String(state.currentModel || bootstrap.selectedModel || '').trim();
+      const currentModel = models.find((model) => String(model.id || '') === currentModelId) || null;
+      const currentModelLabel = currentModel ? String(currentModel.id || '') : (currentModelId || 'Not selected');
+      const fallbackEnabled = Boolean(bootstrap.autoFallback);
+      const resources = [
+        {{ label: 'Files', value: state.files.length, target: 'file-search', detail: 'Workspace library' }},
+        {{ label: 'Knowledge bases', value: state.knowledgeBases.length, target: 'kb-query', detail: 'Registered RAG sources' }},
+        {{ label: 'Agents', value: state.agents.length, target: 'agent-select', detail: 'Reusable presets' }},
+        {{ label: 'Skills', value: state.skills.length, target: 'skill-chips', detail: 'Prompt-side blocks' }},
+        {{ label: 'Memories', value: state.memories.length, target: 'memory-chips', detail: 'Saved context' }},
+        {{ label: 'Notes', value: state.notes.length, target: 'note-chips', detail: 'Working notes' }},
+        {{ label: 'Artifacts', value: state.artifacts.length, target: 'artifact-chips', detail: 'Reusable outputs' }},
+        {{ label: 'Tool servers', value: state.toolServers.length, target: 'tool-chips', detail: 'Connected tools' }},
+      ];
+      const resourceCount = resources.reduce((total, item) => total + (Number(item.value) || 0), 0);
+      const ready = Boolean(models.length && currentModelId);
+      if (els.dashboardModelsValue) els.dashboardModelsValue.textContent = String(models.length);
+      if (els.dashboardModelsMeta) els.dashboardModelsMeta.textContent = models.length ? dashboardCount(models.length, 'routing target') : 'Add provider presets to begin';
+      if (els.dashboardProvidersValue) els.dashboardProvidersValue.textContent = String(providers.size);
+      if (els.dashboardProvidersMeta) els.dashboardProvidersMeta.textContent = providers.size ? dashboardCount(providers.size, 'provider family') : 'No providers configured';
+      if (els.dashboardChatsValue) els.dashboardChatsValue.textContent = String(conversations.length);
+      if (els.dashboardChatsMeta) els.dashboardChatsMeta.textContent = conversations.length ? dashboardCount(conversations.length, 'saved session') : 'Start the first session';
+      if (els.dashboardResourcesValue) els.dashboardResourcesValue.textContent = String(resourceCount);
+      if (els.dashboardResourcesMeta) els.dashboardResourcesMeta.textContent = resourceCount ? dashboardCount(resourceCount, 'workspace resource') : 'Add files, knowledge, or presets';
+      if (els.dashboardPrimaryModel) els.dashboardPrimaryModel.textContent = currentModelLabel;
+      if (els.dashboardRuntimeModel) els.dashboardRuntimeModel.textContent = currentModelLabel;
+      if (els.dashboardRuntimeFallback) els.dashboardRuntimeFallback.textContent = fallbackEnabled ? 'Auto fallback on' : 'Single route';
+      if (els.dashboardRuntimeSession) els.dashboardRuntimeSession.textContent = activeConversation() ? 'Session ready' : 'New session';
+      if (els.dashboardRuntimeCopy) els.dashboardRuntimeCopy.textContent = ready
+        ? `${{currentModelLabel}} is selected for the active chat${{fallbackEnabled ? ', with automatic fallback enabled.' : '.'}}`
+        : 'Choose a configured model to begin a local session.';
+      if (els.dashboardStatusTitle) els.dashboardStatusTitle.textContent = ready
+        ? (fallbackEnabled ? 'Routing ready · fallback armed' : 'Routing ready')
+        : (models.length ? 'Choose a primary model' : 'No routing targets configured');
+      if (els.dashboardStatusCopy) els.dashboardStatusCopy.textContent = ready
+        ? 'The local workspace can accept prompts and keep the active conversation in sync.'
+        : (models.length ? 'Select a model from the sidebar or the Models action below.' : 'Add provider presets or register a model before starting a session.');
+      if (els.dashboardFallbackStatus) els.dashboardFallbackStatus.textContent = fallbackEnabled ? 'Auto fallback: enabled' : 'Auto fallback: disabled';
+      if (els.dashboardRecentChats) {{
+        const recent = conversations
+          .slice()
+          .sort((left, right) => dashboardConversationTimestamp(right) - dashboardConversationTimestamp(left))
+          .slice(0, 4);
+        if (!recent.length) {{
+          els.dashboardRecentChats.innerHTML = '<div class="dashboard-empty">No saved sessions yet. Start a chat to create the first activity item.</div>';
+        }} else {{
+          els.dashboardRecentChats.innerHTML = recent.map((convo) => {{
+            const details = conversationSnippet(convo);
+            const id = String(convo.id || '');
+            return `<button class="dashboard-activity-item" type="button" data-dashboard-conversation-id="${{escapeHtml(id)}}">
+              <span><strong>${{escapeHtml(convo.title || convo.id || 'Untitled chat')}}</strong><small>${{escapeHtml(details.snippet || details.summary || 'No transcript yet')}}</small></span>
+              <span>${{convo.id === state.activeId ? 'Active' : 'Open'}}</span>
+            </button>`;
+          }}).join('');
+        }}
+      }}
+      if (els.dashboardResourceList) {{
+        els.dashboardResourceList.innerHTML = resources.map((item) => `
+          <button class="dashboard-resource-row" type="button" data-dashboard-target="${{escapeHtml(item.target)}}">
+            <span><strong>${{escapeHtml(item.label)}}</strong><small>${{escapeHtml(item.detail)}}</small></span>
+            <span>${{item.value}}</span>
+          </button>
+        `).join('');
+      }}
     }}
     function renderAll() {{
       persistActiveFields();
@@ -14543,6 +16963,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       renderConversationList();
       renderMessages();
       renderProviders();
+      renderComposerState();
       renderKnowledgeBases();
       renderAgentEditor(editingAgentId ? (els.agentEditorFolder.value || '') : (activeAgent() && activeAgent().folderId ? activeAgent().folderId : ''));
       renderAgents();
@@ -14553,6 +16974,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       renderWebSearch();
       renderTools();
       renderWebhooks();
+      renderDashboard();
       renderStatusPills();
       updateQueueStatus();
       const convo = activeConversation();
@@ -14703,9 +17125,19 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         lines.push(`## ${{message.role}}`);
         lines.push('');
         lines.push(String(message.content || '').trim() || '_empty_');
+        const sources = normalizeMessageSources(message.sources || message.citations || []);
+        if (sources.length) {{
+          lines.push('');
+          lines.push('Sources:');
+          for (const source of sources) {{
+            const label = source.title || source.id || source.url || 'Source';
+            const url = source.url ? ` (${{source.url}})` : '';
+            lines.push(`- ${{label}}${{url}}`);
+          }}
+        }}
         lines.push('');
       }}
-      return lines.join('\n').trim() + '\n';
+      return lines.join('\\n').trim() + '\\n';
     }}
     function conversationShareGPT(convo) {{
       const messages = [];
@@ -14715,7 +17147,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       for (const message of convo.messages || []) {{
         if (!message || !message.role) continue;
         const from = message.role === 'user' ? 'human' : 'assistant';
-        messages.push({{ from, value: String(message.content || '') }});
+        const payload = {{ from, value: String(message.content || '') }};
+        const sources = normalizeMessageSources(message.sources || message.citations || []);
+        if (sources.length) {{
+          payload.sources = sources;
+        }}
+        messages.push(payload);
       }}
       return {{
         id: convo.id || 'chat',
@@ -14732,13 +17169,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (convo.files && convo.files.length) parts.push(`Files: ${{convo.files.join(', ')}}`);
       for (const message of convo.messages || []) {{
         if (!message || !message.role) continue;
-        parts.push(`${{message.role}}: ${{String(message.content || '').trim()}}`);
+        const sourceParts = normalizeMessageSources(message.sources || message.citations || [])
+          .map((source) => source.title || source.id || source.url || 'Source');
+        const suffix = sourceParts.length ? ` [sources: ${{sourceParts.join(', ')}}]` : '';
+        parts.push(`${{message.role}}: ${{String(message.content || '').trim()}}${{suffix}}`);
       }}
-      return parts.join('\n\n').trim();
+      return parts.join('\\n\\n').trim();
     }}
     function wrapCanvasText(ctx, text, maxWidth) {{
-      const source = String(text || '').replace(/\r\n/g, '\n');
-      const paragraphs = source.split('\n');
+      const source = String(text || '').replace(/\\r\\n/g, '\\n');
+      const paragraphs = source.split('\\n');
       const lines = [];
       for (const paragraph of paragraphs) {{
         if (!paragraph.trim()) {{
@@ -14877,7 +17317,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (format === 'json') {{
         downloadText(
           `${{convo.id || 'chat'}}-${{stamp}}.json`,
-          JSON.stringify(convo, null, 2) + '\n',
+          JSON.stringify(convo, null, 2) + '\\n',
           'application/json'
         );
         return;
@@ -14886,7 +17326,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         const payload = conversationShareGPT(convo);
         downloadText(
           `${{convo.id || 'chat'}}-${{stamp}}.sharegpt.json`,
-          JSON.stringify(payload, null, 2) + '\n',
+          JSON.stringify(payload, null, 2) + '\\n',
           'application/json'
         );
         return;
@@ -15014,7 +17454,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         const {{ done, value }} = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, {{ stream: true }});
-        buffer = buffer.replace(/\r\n/g, '\\n');
+        buffer = buffer.replace(/\\r\\n/g, '\\\\n');
         let separator = buffer.indexOf('\\n\\n');
         while (separator !== -1) {{
           const eventText = buffer.slice(0, separator);
@@ -15057,6 +17497,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       const appendUser = options.appendUser !== false;
       const convo = activeConversation() || newConversation();
       const model = options.model || els.modelSelect.value || state.currentModel || bootstrap.selectedModel || '';
+      if (!model) {{
+        window.alert('Add a provider preset before sending a message.');
+        renderComposerState();
+        return;
+      }}
       const systemPrompt = Object.prototype.hasOwnProperty.call(options, 'systemPrompt')
         ? String(options.systemPrompt || '').trim()
         : els.systemPrompt.value.trim();
@@ -15067,6 +17512,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       const compareModel = Object.prototype.hasOwnProperty.call(options, 'compareModel')
         ? String(options.compareModel || '')
         : (els.compareModelSelect.value || '');
+      if (compareEnabled && compareModel && compareModel === model) {{
+        window.alert('Choose a different compare model before sending.');
+        renderComposerState();
+        return;
+      }}
       const requestedModels = compareEnabled && compareModel && compareModel !== model
         ? [model, compareModel]
         : [model];
@@ -15110,8 +17560,9 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         els.conversationTitle.value = convo.title;
         els.title.textContent = convo.title;
       }}
-      const assistant = {{ role: 'assistant', content: '', streaming: true }};
+      const assistant = {{ role: 'assistant', content: '', streaming: true, sources: [] }};
       convo.messages.push(assistant);
+      const contextMessages = conversationContextMessages(convo);
       if (activeAbortController) {{
         activeAbortController.abort();
       }}
@@ -15130,7 +17581,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             model,
             models: requestedModels.length > 1 ? requestedModels : undefined,
             stream: true,
-            messages: convo.messages.filter((msg) => msg.role !== 'assistant' || !msg.streaming),
+            messages: contextMessages.filter((msg) => msg.role !== 'assistant' || !msg.streaming),
           }}),
         }});
         if (!response.ok) {{
@@ -15156,14 +17607,17 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
           }});
           if (finalPayload && finalPayload.choices && finalPayload.choices[0] && finalPayload.choices[0].message) {{
             assistant.content = finalPayload.choices[0].message.content || assistant.content;
+            assistant.sources = extractMessageSources(finalPayload);
           }} else if (finalPayload && typeof finalPayload.content === 'string') {{
             assistant.content = finalPayload.content;
+            assistant.sources = extractMessageSources(finalPayload);
           }}
           assistant.streaming = false;
-          }} else {{
+        }} else {{
           const data = await response.json();
           const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : (data.content || '');
           assistant.content = content || '';
+          assistant.sources = extractMessageSources(data);
           assistant.streaming = false;
         }}
       }} catch (err) {{
@@ -15195,11 +17649,17 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     }});
     els.compareToggle.addEventListener('change', () => {{
       state.compareEnabled = !!els.compareToggle.checked;
+      if (!state.compareEnabled) state.compareModel = '';
       persistActiveFields();
       renderAll();
     }});
     els.compareModelSelect.addEventListener('change', () => {{
       state.compareModel = els.compareModelSelect.value || '';
+      if (state.compareEnabled && state.compareModel === (els.modelSelect.value || state.currentModel || bootstrap.selectedModel || '')) {{
+        renderComposerState();
+        persistActiveFields();
+        return;
+      }}
       persistActiveFields();
       renderAll();
     }});
@@ -15225,6 +17685,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     els.dictateButton.addEventListener('click', () => {{
       toggleVoiceInput();
       renderAll();
+    }});
+    els.voiceSelect.addEventListener('change', () => {{
+      state.voiceSpeakVoice = els.voiceSelect.value || '';
+      save();
+      renderVoiceControls();
     }});
     els.refreshKb.addEventListener('click', async () => {{
       await refreshKnowledgeBases();
@@ -15855,6 +18320,33 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       persistActiveFields();
       renderAll();
     }});
+    els.fileSelectVisible.addEventListener('click', () => {{
+      selectVisibleFiles();
+    }});
+    els.fileClearSelection.addEventListener('click', () => {{
+      clearSelectedFileSelection();
+    }});
+    els.fileDeleteSelected.addEventListener('click', async () => {{
+      try {{
+        await deleteSelectedFiles();
+      }} catch (err) {{
+        window.alert(String(err.message || err));
+      }}
+    }});
+    els.fileCloneSelected.addEventListener('click', async () => {{
+      try {{
+        await cloneSelectedFiles();
+      }} catch (err) {{
+        window.alert(String(err.message || err));
+      }}
+    }});
+    els.fileExportSelected.addEventListener('click', async () => {{
+      try {{
+        await exportSelectedFilesToFile();
+      }} catch (err) {{
+        window.alert(String(err.message || err));
+      }}
+    }});
     els.fileImport.addEventListener('click', async () => {{
       try {{
         await importFilesFromFile();
@@ -15891,6 +18383,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     els.clearFileSearch.addEventListener('click', () => {{
       state.fileSearch = '';
       els.fileSearch.value = '';
+      save();
+      renderFiles();
+    }});
+    els.fileTreeView.addEventListener('click', () => {{
+      state.fileTreeView = !state.fileTreeView;
       save();
       renderFiles();
     }});
@@ -15965,9 +18462,29 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (!previewFile) return;
       await copyText(String(previewFile.content || ''));
     }});
+    els.closeSourcePreview.addEventListener('click', () => {{
+      closeSourcePreview();
+    }});
+    els.copySourcePreview.addEventListener('click', async () => {{
+      if (!previewSource) return;
+      const details = describeSource(previewSource);
+      await copyText(
+        [
+          details.title || 'Source',
+          details.url ? `URL: ${{details.url}}` : '',
+          details.details || '',
+          JSON.stringify(previewSource, null, 2),
+        ].filter(Boolean).join('\\n\\n')
+      );
+    }});
     els.filePreviewBackdrop.addEventListener('click', (event) => {{
       if (event.target === els.filePreviewBackdrop) {{
         closeFilePreview();
+      }}
+    }});
+    els.sourcePreviewBackdrop.addEventListener('click', (event) => {{
+      if (event.target === els.sourcePreviewBackdrop) {{
+        closeSourcePreview();
       }}
     }});
     els.shortcutsBackdrop.addEventListener('click', (event) => {{
@@ -16013,6 +18530,34 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       setSidebarCollapsed(false);
       els.conversationTitle.focus();
       els.conversationTitle.select();
+    }});
+    els.dashboardNewChat.addEventListener('click', () => {{
+      newConversation();
+      focusDashboardTarget('prompt');
+    }});
+    els.dashboardFocusChat.addEventListener('click', () => {{
+      focusDashboardTarget('chat');
+      window.setTimeout(() => els.prompt.focus(), 180);
+    }});
+    document.addEventListener('click', (event) => {{
+      const conversationTarget = event.target.closest?.('[data-dashboard-conversation-id]');
+      if (conversationTarget) {{
+        const conversationId = String(conversationTarget.dataset.dashboardConversationId || '');
+        const convo = state.conversations.find((item) => String(item.id || '') === conversationId) || null;
+        if (!convo) return;
+        event.preventDefault();
+        state.activeId = convo.id;
+        if (convo.model) state.currentModel = convo.model;
+        save();
+        syncFields();
+        renderAll();
+        focusDashboardTarget('chat');
+        return;
+      }}
+      const dashboardTarget = event.target.closest?.('[data-dashboard-target]');
+      if (!dashboardTarget) return;
+      event.preventDefault();
+      focusDashboardTarget(dashboardTarget.dataset.dashboardTarget || '');
     }});
     els.duplicateChat.addEventListener('click', () => {{
       const convo = activeConversation();
@@ -16179,6 +18724,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     syncFields();
     applyTheme();
     renderVoiceControls();
+    if ('speechSynthesis' in window) {{
+      const refreshVoices = () => {{
+        renderVoiceControls();
+      }};
+      if (typeof window.speechSynthesis.addEventListener === 'function') {{
+        window.speechSynthesis.addEventListener('voiceschanged', refreshVoices);
+      }} else {{
+        window.speechSynthesis.onvoiceschanged = refreshVoices;
+      }}
+    }}
     renderAll();
   </script>
 </body>

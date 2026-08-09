@@ -1,0 +1,18 @@
+{
+  "model_list": [
+    {
+      "model_name": "zCoder:latest",
+      "litellm_params": {
+        "model": "ollama/zCoder:latest",
+        "api_base": "http://host.docker.internal:11434"
+      }
+    },
+    {
+      "model_name": "qwen2.5-coder",
+      "litellm_params": {
+        "model": "ollama/qwen2.5-coder:7b-instruct-q4_K_M",
+        "api_base": "http://host.docker.internal:11434"
+      }
+    }
+  ]
+}

@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Browser chat UI bulk file-library actions for visible-file selection, selected-file delete, clone, and export
+- Browser file registry tree view for nested file-path browsing alongside the flat list
+- Richer conversation list summaries with transcript snippets in the browser sidebar
+- Stronger first-load onboarding for empty or partially configured workspaces
+- Empty model selector state when no models are configured
+- Actionable empty provider and conversation lists when no models or chats exist yet
+- Composer no-model gate with direct add-presets path
+- Compare-mode guard when the second model matches the primary model
+- Compare-mode status pill warns when the second model matches the primary model
+- Compare selector excludes the primary model as a valid second-model choice
+- Batch settings generator script for all providers via `qwen-gen.sh`
+- Cloud deployment scaffold with Dockerfile, compose file, and container entrypoint
+- Cloud deployment notes for running the browser chat UI behind an ingress
+- HDD-backed cloud helper script `qwen-cloud.sh` with `/mnt/qwen-gen-data` default
+- Full-stack compose file for Ollama, LiteLLM, Open WebUI, NextChat, and qwen-gen
+- Full-stack helper script `qwen-stack.sh` with `/mnt/qwen-gen-data` default
+- Clear-context dividers in the browser transcript, with revert support
+- Markdown callout blocks in the browser chat renderer
+- Markdown footnotes in the browser chat renderer
+- Markdown mention-token highlighting in the browser chat renderer
+- Read-aloud voice selection in the browser chat composer
+- Markdown citation markers in the browser chat renderer
+- Browser chat message source chips for assistant citations or references
+- Browser chat source preview modal for assistant citations or references
+- Smarter file upload text detection for mislabeled text files in the browser file registry
+- Documentation updates for the browser chat, agent, and file workflows
+
 ---
 
 ## [1.3.0] — 2026-07-31

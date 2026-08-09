@@ -1,0 +1,16 @@
+services:
+  qwen-gen:
+    build:
+      context: .
+    image: qwen-gen:latest
+    ports:
+      - "8787:8787"
+    environment:
+      QWEN_SETTINGS: /data/settings.json
+      QWEN_HOST: 0.0.0.0
+      QWEN_PORT: 8787
+    volumes:
+      - qwen-gen-data:/data
+
+volumes:
+  qwen-gen-data:

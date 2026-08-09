@@ -154,6 +154,7 @@ class TestQwenOmega(unittest.TestCase):
                     "transcript": "assistant: Plan the release.",
                     "folderId": "project-alpha",
                     "images": ["screenshot.png"],
+                    "clearContextIndex": 1,
                 }
             ],
         }
@@ -204,6 +205,12 @@ class TestQwenOmega(unittest.TestCase):
         }
         self.assertTrue(any("duplicate file id" in e for e in qo.validate_settings(duplicate_file)))
 
+        invalid_context = dict(valid)
+        invalid_context["conversations"] = [dict(valid["conversations"][0], clearContextIndex=-1)]
+        self.assertTrue(
+            any("clearContextIndex must be a non-negative integer" in e for e in qo.validate_settings(invalid_context))
+        )
+
     def test_normalize_existing_providers(self):
         settings = {
             "modelProviders": {
@@ -253,6 +260,27 @@ class TestQwenOmega(unittest.TestCase):
         self.assertEqual(len(filtered), 2)
         self.assertEqual(filtered[0]["id"], "qwen3-coder:latest")
         self.assertEqual(filtered[1]["id"], "deepseek-coder")
+
+    def test_normalize_conversations_drops_empty_transcript_fields(self):
+        settings = {
+            "$version": 4,
+            "modelProviders": {},
+            "conversations": [
+                {"id": "empty", "title": "Empty", "transcript": ""},
+                {
+                    "id": "messages",
+                    "title": "Messages",
+                    "transcript": " ",
+                    "messages": [{"role": "user", "content": "hello"}],
+                },
+            ],
+        }
+
+        normalized = qo.normalize_conversations(settings)
+
+        self.assertEqual(normalized[0], {"id": "empty", "title": "Empty"})
+        self.assertNotIn("transcript", normalized[1])
+        self.assertEqual(qo.validate_settings(settings), [])
 
     def test_dry_run_generate_without_api_key(self):
         args = argparse.Namespace(
@@ -639,15 +667,29 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("Stop", html)
         self.assertIn("toggle-sidebar", html)
         self.assertIn("Collapse sidebar", html)
-        self.assertIn("sidebarCollapsed: localStorage.getItem('qwen-gen.chat.sidebarCollapsed') !== '0'", html)
+        self.assertIn("sidebarCollapsed: localStorage.getItem('qwen-gen.chat.sidebarPreference') === 'collapsed'", html)
         self.assertIn("theme-toggle", html)
         self.assertIn("Theme: Dark", html)
         self.assertIn("shortcuts-help", html)
         self.assertIn("Keyboard shortcuts", html)
         self.assertIn("dictate-button", html)
         self.assertIn("voice-status", html)
+        self.assertIn("voice-select", html)
         self.assertIn("Read aloud", html)
         self.assertIn("status-pills", html)
+        self.assertIn("Workspace dashboard", html)
+        self.assertIn("dashboard-view", html)
+        self.assertIn("dashboard-nav", html)
+        self.assertIn("Qwen Gen operations", html)
+        self.assertIn("dashboard-models-value", html)
+        self.assertIn("dashboard-providers-value", html)
+        self.assertIn("dashboard-chats-value", html)
+        self.assertIn("dashboard-resources-value", html)
+        self.assertIn("dashboard-recent-chats", html)
+        self.assertIn("dashboard-resource-list", html)
+        self.assertIn("Models → fallback → chat", html)
+        self.assertIn("data-dashboard-target=\"kb-query\"", html)
+        self.assertIn("dashboardNewChat", html)
         self.assertIn("Providers", html)
         self.assertIn("Add presets", html)
         self.assertIn("Refresh", html)
@@ -786,11 +828,27 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("Ready-to-use local chat interface", html)
         self.assertIn("First load onboarding", html)
         self.assertIn("Set up your first workspace", html)
+        self.assertIn("Workspace setup required", html)
+        self.assertIn("Workspace status", html)
+        self.assertIn("No models configured", html)
+        self.assertIn("No conversations yet", html)
+        self.assertIn("No saved templates", html)
         self.assertIn("Recommended first steps", html)
         self.assertIn("Add provider presets", html)
         self.assertIn("0 models", html)
         self.assertIn("0 templates", html)
         self.assertIn("0 chats", html)
+        self.assertIn("No provider models configured", html)
+        self.assertIn("Add presets to populate the model selector", html)
+        self.assertIn("composer-state", html)
+        self.assertIn("No model is selected yet.", html)
+        self.assertIn("Add a model first, then ask Qwen something", html)
+        self.assertIn("Compare mode needs two models", html)
+        self.assertIn("Add one more provider preset to enable side-by-side comparison", html)
+        self.assertIn("Compare mode needs a different second model", html)
+        self.assertIn("Choose another model in the compare selector", html)
+        self.assertIn("needs different model", html)
+        self.assertIn("(current model)", html)
         self.assertIn("Open template gallery", html)
         self.assertIn("template-drawer", html)
         self.assertIn("Template gallery", html)
@@ -812,18 +870,43 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("file-import", html)
         self.assertIn("file-export", html)
         self.assertIn("file-clone", html)
+        self.assertIn("file-select-visible", html)
+        self.assertIn("file-clear-selection", html)
+        self.assertIn("file-delete-selected", html)
+        self.assertIn("file-clone-selected", html)
+        self.assertIn("file-export-selected", html)
+        self.assertIn("file-tree-view", html)
         self.assertIn("file-upload", html)
         self.assertIn("file-search", html)
         self.assertIn("clear-file-search", html)
         self.assertIn("clear-file-attachments", html)
         self.assertIn("selected-file-chips", html)
         self.assertIn("selected-file-meta", html)
+        self.assertIn("file-selection-meta", html)
+        self.assertIn("file-tree-dir", html)
+        self.assertIn("file-tree-summary", html)
+        self.assertIn("file-tree-children", html)
+        self.assertIn("callout-title", html)
+        self.assertIn("callout-body", html)
+        self.assertIn("footnotes", html)
+        self.assertIn("footnote-ref", html)
+        self.assertIn("citation", html)
+        self.assertIn("data-citation-index", html)
+        self.assertIn("message-sources", html)
+        self.assertIn("message-source-chip", html)
+        self.assertIn("source-preview-backdrop", html)
+        self.assertIn("source-preview-title", html)
+        self.assertIn("source-preview-meta", html)
+        self.assertIn("source-preview-body", html)
+        self.assertIn("mention-at", html)
+        self.assertIn("mention-hash", html)
         self.assertIn("drag/paste files here to upload", html)
         self.assertIn("Compare models", html)
         self.assertIn("Enable compare mode", html)
         self.assertIn("Pin", html)
         self.assertIn("Archive", html)
         self.assertIn("Saved chats", html)
+        self.assertIn("No saved chats yet", html)
         self.assertIn("Ready for use", html)
         self.assertIn("chat-empty-presets", html)
         self.assertIn("chat-empty-templates", html)
@@ -874,6 +957,11 @@ class TestQwenOmega(unittest.TestCase):
         self.assertIn("Clone", html)
         self.assertIn("Delete", html)
         self.assertIn("conversation-item-select", html)
+        self.assertIn("conversation-item-snippet", html)
+        self.assertIn("selected for library actions", html)
+        self.assertIn("Clear context", html)
+        self.assertIn("Context cleared above.", html)
+        self.assertIn("Revert", html)
 
         manifest = json.loads(urllib.request.urlopen(f"{base_url}/manifest.webmanifest").read())
         self.assertEqual(manifest["name"], "Qwen Gen Chat")
@@ -1089,6 +1177,7 @@ class TestQwenOmega(unittest.TestCase):
         self.assertEqual(compare_conversation["compareModels"], ["qwen3-coder:mini"])
 
         fallback_settings = {
+            "general": {"autoFallback": True},
             "modelProviders": {
                 "openai": [
                     {
@@ -1134,6 +1223,35 @@ class TestQwenOmega(unittest.TestCase):
             )
         self.assertEqual(fallback_response["model"], "deepseek-coder:latest")
         self.assertEqual(fallback_response["choices"][0]["message"]["content"], "echo: fallback")
+
+        def fake_transient(settings, model_id, messages, payload, insecure=False):
+            if model_id == "qwen3-coder:latest":
+                raise qo.RequestError("HTTP 429 from provider: rate limited")
+            return {
+                "id": "chatcmpl-transient-fallback",
+                "object": "chat.completion",
+                "created": 123,
+                "model": model_id,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "echo: retry"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "provider": "openai",
+                "providerName": "OpenAI",
+            }
+
+        with unittest.mock.patch.object(qo, "_CHAT_COMPLETION_SINGLE", side_effect=fake_transient):
+            transient_response = qo._chat_completion(
+                fallback_settings,
+                "qwen3-coder:latest",
+                [{"role": "user", "content": "retry"}],
+                {},
+            )
+        self.assertEqual(transient_response["model"], "deepseek-coder:latest")
+        self.assertEqual(transient_response["choices"][0]["message"]["content"], "echo: retry")
 
         state_response = json.loads(
             urllib.request.urlopen(

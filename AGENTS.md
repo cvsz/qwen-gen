@@ -13,6 +13,24 @@ The source of truth is `qwen_omega.py`. It contains:
 - the embedded browser KB panel with create/edit/delete/refresh/query/import/export/sync/watch flows
 - browser conversation and agent bulk actions for import/export/share/clone
 - browser file registry import/export/share/clone controls
+- browser file registry bulk selection actions for visible files, selected-file export, selected-file clone, and selected-file delete
+- browser file registry tree/flat browsing for nested paths
+- stronger first-load onboarding in the browser chat when models or conversations are missing
+- empty model selector and compare selector states when no models are configured
+- actionable empty provider and conversation lists in the browser chat when nothing is configured yet
+- composer no-model gate with a direct add-presets path
+- compare-mode guard when the second model matches the primary model
+- compare-mode status pill warns when the second model matches the primary model
+- compare selector excludes the primary model as a valid second-model choice
+- richer browser conversation summaries with transcript snippets in the sidebar
+- browser conversation clear-context dividers with revert controls
+- file upload text detection that preserves mislabeled text files as text
+- browser chat markdown footnotes and callout blocks
+- browser chat markdown mention-token highlighting for @, #, and $ tokens
+- browser chat read-aloud voice selection
+- browser chat markdown citation markers
+- browser chat message source chips for citations and references
+- browser chat source preview modal for citations and references
 
 ## Working Rules
 
@@ -83,7 +101,7 @@ The browser UI already includes:
 - conversation list with pin/archive/filter/search
 - transcript search
 - conversation import/export/share/clone controls
-- file import/export/share/clone, upload, attachment chips, and file preview
+- file import/export/share/clone, upload, attachment chips, bulk library selection, and file preview
 - copy/export/share actions
 - message-level copy/edit/delete/retry
 - prompt insertion from skills, memories, notes, and artifacts
@@ -91,6 +109,7 @@ The browser UI already includes:
 - theme toggle
 - keyboard shortcut overlay
 - PWA shell support
+- cloud/container support via `Dockerfile`, `docker-compose.yml`, and `docker-entrypoint.sh`
 
 ### 3. Settings and Data Model
 
@@ -230,6 +249,7 @@ Current UI priorities already implemented in code:
 - [`test_qwen_omega.py`](/home/cvsz/qwen-gen/test_qwen_omega.py) - primary regression coverage
 - [`README.md`](/home/cvsz/qwen-gen/README.md) - user-facing install and usage guide
 - [`NEXTCHAT_OPENWEBUI_PARITY.md`](/home/cvsz/qwen-gen/NEXTCHAT_OPENWEBUI_PARITY.md) - scope note for parity and non-parity
+- [`NEXTCHAT_OPENWEBUI_SOURCE_AUDIT.md`](/home/cvsz/qwen-gen/NEXTCHAT_OPENWEBUI_SOURCE_AUDIT.md) - file-by-file upstream chat interface review notes
 - [`example-settings.json`](/home/cvsz/qwen-gen/example-settings.json) - canonical settings example
 
 ## Verification Workflow
@@ -246,12 +266,17 @@ Useful checks:
 - `systemctl --user status qwen-omega.service --no-pager`
 - `curl -fsS http://127.0.0.1:8091/`
 - `curl -fsS https://qwen.zeaz.dev/`
+- `docker build -t qwen-gen .`
+- `docker run --rm -p 8787:8787 qwen-gen`
+- `./qwen-cloud.sh`
+- `./qwen-stack.sh`
 
 ## Deployment Notes
 
 The live browser chat is served by the user service:
 - `qwen-omega.service`
 - current local bind is `127.0.0.1:8091`
+- cloud/container default bind is `0.0.0.0:8787`
 
 If the live UI must change, restart the service after the code update and verify the external URL.
 

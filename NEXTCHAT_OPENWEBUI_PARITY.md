@@ -40,16 +40,32 @@ generation, and a browser chat surface for local use.
 - Conversation history management via `conversations add/import/export/list/remove/share` with folder, attachment, and image support
 - Conversation/session duplication via `conversations clone`
 - Conversation branch/fork from an in-chat message
-- Browser conversation history manager with import/export/share/clone actions
+- Browser conversation history manager with import/export/share/clone actions, transcript search, richer transcript summaries, and clear-context dividers
+- Stronger first-load onboarding in the browser chat when models or conversations are missing
+- Empty model and compare selectors when no models are configured
+- Actionable empty provider and conversation lists when no models or chats exist yet
+- Composer no-model gate with a direct add-presets path
+- Compare-mode guard when the second model matches the primary model
+- Compare-mode status pill warns when the second model matches the primary model
+- Compare selector excludes the primary model as a valid second-model choice
 - Webhook / notification target registry management via `webhooks add/import/export/list/remove/share/clone`
 - Agent preset management via `agents add/import/export/list/remove/share`
 - Agent preset duplication via `agents clone`
-- Browser agent preset manager with import/export/share/clone actions
+- Browser agent preset manager with import/export/share/clone actions, live preview, and apply-to-chat workflow
 - Local browser chat server via `serve`, with `/api/models`, `/api/chat`, `/api/bootstrap`, `/api/conversations`, and `/api/prompt-templates`
 - Browser file upload into the file registry via `/api/files`
 - Browser file registry import/export/clone controls in the browser UI
+- Browser file registry workflow with bulk selection, delete/clone/export selected, preview, search/filter, attachment chips, and tree/flat browsing
 - Drag-and-drop file upload from the chat composer into the file registry
 - File preview modal in the browser chat UI
+- Markdown callout blocks in the browser chat renderer
+- Markdown footnotes in the browser chat renderer
+- Markdown mention-token highlighting in the browser chat renderer
+- Read-aloud voice selection in the browser chat composer
+- Markdown citation markers in the browser chat renderer
+- Browser chat message source chips for assistant citations or references
+- Browser chat source preview modal for assistant citations or references
+- Browser file upload text detection that treats mislabeled text files as text instead of binary blobs
 - PWA shell for the browser chat UI via `/manifest.webmanifest`, `/sw.js`, and an app icon
 - Server-backed conversation persistence into `settings.json`
 - Basic markdown rendering for chat responses in the browser UI
@@ -83,14 +99,6 @@ generation, and a browser chat surface for local use.
 - File registry search/filter in the browser UI for browsing by id, name, kind, path, description, content, and tags
 - Unified search across prompts, skills, plugins, pipelines, filters, actions, automations, channels, files, agents, conversations, folders, tools, knowledge, notes, memories, webhooks, artifacts, and providers via `search`
 - Validation and repair of generated Qwen Code settings
-
-## Partial / In Progress
-
-These areas exist in the codebase but are intentionally narrower than the larger NextChat / Open WebUI experience.
-
-- File browser experience is still narrower than a full file manager: the UI supports upload, import/export/clone, attachment selection, preview, delete, search/filter, and share/export, but not a dedicated library workflow
-- Chat history UX is still narrower than a full NextChat/Open WebUI transcript manager, even though browser import/export/share/clone is now available
-- Agent workspace features are still narrower than a full multi-pane workspace editor, even though browser import/export/share/clone is now available
 
 ## Already Modeled in UI But Easy to Misread
 

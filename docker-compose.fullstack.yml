@@ -1,0 +1,119 @@
+services:
+  litellm:
+    image: docker.litellm.ai/berriai/litellm:latest
+    command: ["--config", "/app/config.yaml"]
+    # The host Ollama service is reachable from host networking, while this
+    # deployment's Docker bridge cannot reach host-gateway from containers.
+    network_mode: ${QWEN_STACK_NETWORK_MODE:-host}
+    env_file:
+      - path: .env.ai
+        required: false
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:-change-me-change-me-change-me}
+      # Add provider keys here if you want LiteLLM to expose more upstreams.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD
+        - /app/.venv/bin/python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=3).read()
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    network_mode: ${QWEN_STACK_NETWORK_MODE:-host}
+    environment:
+      # Open WebUI connects to the LiteLLM OpenAI-compatible endpoint.
+      OPENAI_API_BASE_URL: ${QWEN_LITELLM_BASE_URL:-http://127.0.0.1:4000/v1}
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev}
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-change-me-change-me-change-me}
+      # Open WebUI is the secondary local UI, not the public chat hostname.
+      WEBUI_URL: http://127.0.0.1:${OPENWEBUI_HOST_PORT:-3011}
+      PORT: ${OPENWEBUI_HOST_PORT:-3011}
+      # Cloudflare/browser WebSocket handshakes are unreliable on this route;
+      # keep realtime transport on the HTTP polling fallback instead.
+      ENABLE_WEBSOCKET_SUPPORT: "false"
+      # Keep the first boot fast and avoid Hugging Face downloads in this stack.
+      OFFLINE_MODE: "true"
+      HF_HUB_OFFLINE: "1"
+      RAG_EMBEDDING_MODEL_AUTO_UPDATE: "false"
+      RAG_RERANKING_MODEL_AUTO_UPDATE: "false"
+      WHISPER_MODEL_AUTO_UPDATE: "false"
+    volumes:
+      - open-webui-data:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      litellm:
+        condition: service_healthy
+
+  nextchat:
+    image: yidadaa/chatgpt-next-web:latest
+    network_mode: ${QWEN_STACK_NETWORK_MODE:-host}
+    environment:
+      # Primary public chat UI for chat.zeaz.dev.
+      PORT: ${NEXTCHAT_HOST_PORT:-3000}
+      HOSTNAME: 127.0.0.1
+      BASE_URL: ${NEXTCHAT_BASE_URL:-http://127.0.0.1:4000/v1}
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev}
+      DEFAULT_MODEL: ${NEXTCHAT_DEFAULT_MODEL:-zCoder:latest}
+      CUSTOM_MODELS: ${NEXTCHAT_CUSTOM_MODELS:-zCoder:latest,qwen2.5-coder}
+      CODE: ${NEXTCHAT_CODE:-}
+      HIDE_USER_API_KEY: "1"
+      DISABLE_FAST_LINK: "1"
+    depends_on:
+      litellm:
+        condition: service_healthy
+
+  qwen-gen:
+    build:
+      context: .
+    network_mode: ${QWEN_STACK_NETWORK_MODE:-host}
+    user: "${QWEN_UID:-1000}:${QWEN_GID:-1000}"
+    env_file:
+      - path: .env.ai
+        required: false
+    environment:
+      QWEN_SETTINGS: /data/settings.json
+      QWEN_HOST: 127.0.0.1
+      QWEN_PORT: ${QWEN_HOST_PORT:-8787}
+      QWEN_PROVIDER: litellm
+      QWEN_DEFAULT_MODEL: ${QWEN_DEFAULT_MODEL:-qwen2.5-coder}
+      QWEN_AUTO_CONFIGURE: ${QWEN_AUTO_CONFIGURE:-1}
+      QWEN_CONFIGURE_RETRIES: ${QWEN_CONFIGURE_RETRIES:-30}
+      LITELLM_BASE_URL: ${QWEN_LITELLM_BASE_URL:-http://127.0.0.1:4000/v1}
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev}
+      OLLAMA_BASE_URL: ${QWEN_OLLAMA_BASE_URL:-http://127.0.0.1:11434/v1}
+    volumes:
+      - ${QWEN_DATA_DIR:-/mnt/qwen-gen-data}:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:${QWEN_HOST_PORT:-8787}/api/ai/models', timeout=3).read()
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  open-webui-data:
