@@ -108,7 +108,49 @@ export OPENROUTER_API_KEY='sk-or-v1-...'
 
 ---
 
-### 3 · DashScope — official Alibaba Qwen API
+### 3 · Cloud deployment
+
+```bash
+# Build and run the same browser chat interface in a container
+docker build -t qwen-gen .
+docker run --rm -p 8787:8787 \
+  -e QWEN_SETTINGS=/data/settings.json \
+  -e QWEN_HOST=0.0.0.0 \
+  -e QWEN_PORT=8787 \
+  -v qwen-gen-data:/data \
+  qwen-gen
+
+# Or use Compose
+docker compose up --build
+```
+
+Keep the `/data` volume attached so conversations, prompt libraries, files,
+and other browser state survive restarts.
+
+See [CLOUD.md](CLOUD.md) for the container and ingress notes.
+
+For a ready-to-run HDD-backed launch, use `./qwen-cloud.sh`.
+
+For the merged local-LLM stack, use `./qwen-stack.sh` and see [FULL_STACK.md](FULL_STACK.md).
+
+To discover provider-declared free chat models and then publish only those with
+current quota:
+
+```bash
+./sync-free-models.sh --timeout 20
+./qwen-free.sh --settings /mnt/qwen-gen-data/settings.json \
+  --env-root /home/cvsz/qwen-gen --timeout 60 \
+  --litellm-config /home/cvsz/qwen-gen/litellm-config.yaml
+docker compose -f docker-compose.fullstack.yml up -d --force-recreate litellm open-webui nextchat
+```
+
+The catalog sync finds declared free routes, while `qwen-free.sh` sends a real
+chat probe and prunes the runtime allowlist. Media-only models are excluded,
+and routes without current quota or valid credentials are not advertised.
+
+---
+
+### 4 · DashScope — official Alibaba Qwen API
 
 ```bash
 export DASHSCOPE_API_KEY='sk-...'
@@ -122,7 +164,7 @@ export DASHSCOPE_API_KEY='sk-...'
 
 ---
 
-### 4 · SiliconFlow (China mainland optimized)
+### 5 · SiliconFlow (China mainland optimized)
 
 ```bash
 export SILICONFLOW_API_KEY='sk-...'
@@ -131,7 +173,7 @@ export SILICONFLOW_API_KEY='sk-...'
 
 ---
 
-### 5 · Any OpenAI-compatible provider
+### 6 · Any OpenAI-compatible provider
 
 ```bash
 # Custom vLLM / LM Studio / LiteLLM gateway
@@ -155,15 +197,16 @@ qwen-omega install-coder --backend open_webui
 NEXTCHAT_BASE_URL='http://127.0.0.1:3000/api/openai/v1' \
 qwen-omega install-coder
 
-# Local browser chat UI backed by your qwen-gen settings, with transcript search, drag-and-drop and paste file upload, file registry import/export/clone, file preview, multi-model compare, export, ShareGPT sharing, share-image support, conversation/agent bulk actions, and PWA install support
+# Local browser chat UI backed by your qwen-gen settings, with stronger first-load onboarding when models or conversations are missing, empty model selectors when no models are configured, an explicit composer no-model gate, actionable empty provider and conversation lists, transcript search, richer conversation summaries, clear-context dividers, markdown callouts, footnotes, citation markers, mention-token highlighting, read-aloud voice selection, message source chips, source preview modal, drag-and-drop and paste file upload, file registry import/export/clone, bulk file-library actions, tree/flat file browsing, file preview, multi-model compare, export, ShareGPT sharing, share-image support, conversation/agent bulk actions, and PWA install support
 qwen-omega serve --settings ~/.qwen/settings.json
 ```
 
 See [NEXTCHAT_OPENWEBUI_PARITY.md](NEXTCHAT_OPENWEBUI_PARITY.md) for a short scope note on what this repo does and does not model from NextChat and Open WebUI.
+See [NEXTCHAT_OPENWEBUI_SOURCE_AUDIT.md](NEXTCHAT_OPENWEBUI_SOURCE_AUDIT.md) for the file-by-file upstream chat interface review notes.
 
 ---
 
-### 6 · CI / headless environment
+### 7 · CI / headless environment
 
 ```bash
 # Non-interactive, errors instead of prompts
@@ -181,7 +224,7 @@ APPROVAL_MODE=auto-edit \
 
 ---
 
-### 7 · Model filtering & discovery
+### 8 · Model filtering & discovery
 
 ```bash
 # List all provider presets
@@ -202,6 +245,10 @@ qwen-omega generate \
   --exclude-regex 'instruct-vl' \
   --limit 10 \
   --dry-run
+
+# Batch-generate one settings file per provider
+./qwen-gen.sh --free
+./qwen-gen.sh --providers openai,openrouter --free --coder-only
 ```
 
 ---
@@ -274,6 +321,7 @@ qwen-omega validate      Validate current settings schema
 qwen-omega repair        Fix legacy modelProviders shapes
 qwen-omega doctor        Inspect node/npm/qwen and validate settings
 qwen-omega providers     List all 30+ provider presets
+qwen-gen.sh              Batch-generate one settings file per provider
 ```
 
 ---
@@ -566,20 +614,29 @@ qwen-omega kb query --settings ./settings.json release
 
 # Search the web and save result pages to knowledge
 qwen-omega web-search --list-providers
-qwen-omega web-search --engine-url 'http://127.0.0.1:8000/search?q={query}' \
+qwen-omega web-search --provider duckduckgo \
   --save-to-knowledge --base-id release-search release ./release-search-index.json
 
 # Use a provider-aware JSON search API
+export QWEN_EXTERNAL_SEARCH_ALLOWED_HOSTS=search.example.com
 qwen-omega web-search --provider external \
-  --engine-url 'http://127.0.0.1:8000/search' \
+  --engine-url 'https://search.example.com/search' \
   --save-to-knowledge --base-id release-search release ./release-search-index.json
 
 # Merge results across fallback providers
 qwen-omega web-search --provider external \
   --fallback-provider brave \
-  --engine-url 'http://127.0.0.1:8000/search' \
+  --engine-url 'https://search.example.com/search' \
   release
 ```
+
+Remote web retrieval accepts only HTTP(S) URLs that resolve to public IP
+addresses; loopback, private, link-local, reserved, credential-bearing, and
+unsafe redirect targets are rejected. An external search endpoint that receives
+an API key must be listed in `QWEN_EXTERNAL_SEARCH_ALLOWED_HOSTS`. Browser API
+sync/watch requests never choose an arbitrary filesystem destination: exports
+are written beneath `<settings-directory>/knowledge-exports`. Webhook share and
+dry-run output omits secret values.
 
 ---
 

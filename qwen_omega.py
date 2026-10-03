@@ -12,8 +12,8 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import contextlib
-import base64
 import http.server
+import ipaddress
 from html import escape as html_escape
 from html.parser import HTMLParser
 import json
@@ -22,6 +22,7 @@ import pathlib
 import mimetypes
 import re
 import shutil
+import socket
 import ssl
 import subprocess
 import sys
@@ -314,10 +315,14 @@ def backup(path: pathlib.Path) -> pathlib.Path | None:
 SNAPSHOT_FORMAT = "qwen-omega.snapshot.v1"
 
 
-def build_snapshot_bundle(settings: dict[str, Any], source_path: pathlib.Path) -> dict[str, Any]:
+def build_snapshot_bundle(
+    settings: dict[str, Any], source_path: pathlib.Path
+) -> dict[str, Any]:
     return {
         "format": SNAPSHOT_FORMAT,
-        "createdAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "createdAt": dt.datetime.now(dt.timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "source": str(source_path),
         "settings": settings,
     }
@@ -359,7 +364,9 @@ def snapshot_sync_cycle(
             json.dump(bundle, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return "push"
-        snapshot_path.write_text(json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        snapshot_path.write_text(
+            json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         return "push"
 
     settings, _meta = load_snapshot_settings(snapshot_path)
@@ -618,11 +625,7 @@ def read_env_files(root: pathlib.Path) -> dict[str, str]:
                 if not re.match(r"^[A-Z_][A-Z0-9_]*$", key):
                     continue
                 value = value.strip()
-                if (
-                    len(value) >= 2
-                    and value[0] == value[-1]
-                    and value[0] in {"'", '"'}
-                ):
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
                     value = value[1:-1]
                 if value or key not in values:
                     values[key] = value
@@ -634,7 +637,9 @@ def read_env_files(root: pathlib.Path) -> dict[str, str]:
     return values
 
 
-def provider_enabled(provider_key: str, preset: ProviderPreset, env: dict[str, str]) -> bool:
+def provider_enabled(
+    provider_key: str, preset: ProviderPreset, env: dict[str, str]
+) -> bool:
     if provider_key in LOCAL_FREE_CATALOG_PROVIDERS:
         return True
     if env.get(preset.env_key, "").strip():
@@ -694,7 +699,9 @@ def build_free_model_items(
 def is_placeholder_provider_entry(item: dict[str, Any]) -> bool:
     model_id = str(item.get("id", "")).strip()
     description = str(item.get("description", "")).strip()
-    return model_id.endswith("-provider") and description.startswith("Provider preset for ")
+    return model_id.endswith("-provider") and description.startswith(
+        "Provider preset for "
+    )
 
 
 def slugify(value: str) -> str:
@@ -731,7 +738,13 @@ def normalize_prompt_templates(settings: dict[str, Any]) -> list[dict[str, Any]]
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -782,10 +795,15 @@ def normalize_skills(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 "name": str(name).strip(),
                 "content": content,
             }
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized_item["description"] = str(item["description"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized_item["tags"] = tags
             if item.get("pinned") is not None:
@@ -809,7 +827,10 @@ def normalize_skills(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 item.setdefault("name", str(key).strip())
                 if isinstance(item.get("content"), str) and item["content"].strip():
                     normalized.append(item)
-                elif isinstance(item.get("instructions"), str) and item["instructions"].strip():
+                elif (
+                    isinstance(item.get("instructions"), str)
+                    and item["instructions"].strip()
+                ):
                     item["content"] = item.pop("instructions")
                     normalized.append(item)
         settings["skills"] = normalized
@@ -842,16 +863,23 @@ def normalize_plugins(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 "name": str(name).strip(),
                 "content": content,
             }
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized_item["description"] = str(item["description"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized_item["tags"] = tags
             for key in ("tools", "knowledge", "skills", "events"):
                 values = item.get(key)
                 if isinstance(values, list):
-                    cleaned = [str(entry).strip() for entry in values if str(entry).strip()]
+                    cleaned = [
+                        str(entry).strip() for entry in values if str(entry).strip()
+                    ]
                     if cleaned:
                         normalized_item[key] = cleaned
             if isinstance(item.get("url"), str) and str(item.get("url")).strip():
@@ -877,7 +905,10 @@ def normalize_plugins(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 item.setdefault("name", str(key).strip())
                 if isinstance(item.get("content"), str) and item["content"].strip():
                     normalized.append(item)
-                elif isinstance(item.get("instructions"), str) and item["instructions"].strip():
+                elif (
+                    isinstance(item.get("instructions"), str)
+                    and item["instructions"].strip()
+                ):
                     item["content"] = item.pop("instructions")
                     normalized.append(item)
         settings["plugins"] = normalized
@@ -910,16 +941,23 @@ def normalize_pipelines(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 "name": str(name).strip(),
                 "content": content,
             }
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized_item["description"] = str(item["description"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized_item["tags"] = tags
             for key in ("tools", "knowledge", "skills", "events"):
                 values = item.get(key)
                 if isinstance(values, list):
-                    cleaned = [str(entry).strip() for entry in values if str(entry).strip()]
+                    cleaned = [
+                        str(entry).strip() for entry in values if str(entry).strip()
+                    ]
                     if cleaned:
                         normalized_item[key] = cleaned
             if isinstance(item.get("url"), str) and str(item["url"]).strip():
@@ -945,7 +983,10 @@ def normalize_pipelines(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 item.setdefault("name", str(key).strip())
                 if isinstance(item.get("content"), str) and item["content"].strip():
                     normalized.append(item)
-                elif isinstance(item.get("instructions"), str) and item["instructions"].strip():
+                elif (
+                    isinstance(item.get("instructions"), str)
+                    and item["instructions"].strip()
+                ):
                     item["content"] = item.pop("instructions")
                     normalized.append(item)
         settings["pipelines"] = normalized
@@ -976,19 +1017,16 @@ def normalize_tool_servers(settings: dict[str, Any]) -> list[dict[str, Any]]:
                     "name": str(name).strip(),
                     **(
                         {"type": str(item["type"]).strip()}
-                        if isinstance(item.get("type"), str) and str(item.get("type")).strip()
+                        if isinstance(item.get("type"), str)
+                        and str(item.get("type")).strip()
                         else {}
                     ),
                     **(
-                        {
-                            "endpoint": str(item["endpoint"]).strip()
-                        }
+                        {"endpoint": str(item["endpoint"]).strip()}
                         if isinstance(item.get("endpoint"), str)
                         and str(item.get("endpoint")).strip()
                         else (
-                            {
-                                "endpoint": str(item["url"]).strip()
-                            }
+                            {"endpoint": str(item["url"]).strip()}
                             if isinstance(item.get("url"), str)
                             and str(item.get("url")).strip()
                             else {}
@@ -1000,18 +1038,20 @@ def normalize_tool_servers(settings: dict[str, Any]) -> list[dict[str, Any]]:
                         and str(item.get("description")).strip()
                         else {}
                     ),
-                    **(
-                        {"auth": item["auth"]}
-                        if item.get("auth") is not None
-                        else {}
-                    ),
+                    **({"auth": item["auth"]} if item.get("auth") is not None else {}),
                     **(
                         {"enabled": bool(item["enabled"])}
                         if item.get("enabled") is not None
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -1023,7 +1063,13 @@ def normalize_tool_servers(settings: dict[str, Any]) -> list[dict[str, Any]]:
         normalized = []
         for key, value in servers.items():
             if isinstance(value, str):
-                normalized.append({"id": str(key).strip(), "name": str(key).strip(), "endpoint": value})
+                normalized.append(
+                    {
+                        "id": str(key).strip(),
+                        "name": str(key).strip(),
+                        "endpoint": value,
+                    }
+                )
                 continue
             if isinstance(value, dict):
                 item = dict(value)
@@ -1073,7 +1119,13 @@ def normalize_knowledge_bases(settings: dict[str, Any]) -> list[dict[str, Any]]:
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -1095,7 +1147,13 @@ def normalize_knowledge_bases(settings: dict[str, Any]) -> list[dict[str, Any]]:
         normalized = []
         for key, value in bases.items():
             if isinstance(value, str):
-                normalized.append({"id": str(key).strip(), "name": str(key).strip(), "sourceDir": value})
+                normalized.append(
+                    {
+                        "id": str(key).strip(),
+                        "name": str(key).strip(),
+                        "sourceDir": value,
+                    }
+                )
                 continue
             if isinstance(value, dict):
                 item = dict(value)
@@ -1131,7 +1189,8 @@ def normalize_knowledge_indexes(settings: dict[str, Any]) -> list[dict[str, Any]
                     "baseId": base_id.strip(),
                     **(
                         {"path": str(item["path"]).strip()}
-                        if isinstance(item.get("path"), str) and str(item.get("path")).strip()
+                        if isinstance(item.get("path"), str)
+                        and str(item.get("path")).strip()
                         else {}
                     ),
                     **(
@@ -1241,7 +1300,9 @@ def build_knowledge_index_from_documents(
         chunks = split_text_chunks(str(doc.get("content", "")), chunk_size, overlap)
         doc_id = str(doc.get("id") or slugify(str(doc.get("title") or "document")))
         doc_path = str(doc.get("path") or doc.get("source") or "")
-        relative_path = str(doc.get("relativePath") or doc.get("name") or doc.get("title") or doc_id)
+        relative_path = str(
+            doc.get("relativePath") or doc.get("name") or doc.get("title") or doc_id
+        )
         title = str(doc.get("title") or doc.get("name") or doc_id)
         kind = str(doc.get("kind") or "").strip()
         size = doc.get("size")
@@ -1403,7 +1464,9 @@ def _normalize_web_search_results(payload: Any, limit: int) -> list[dict[str, st
     elif isinstance(payload, dict):
         if isinstance(payload.get("results"), list):
             candidates = payload["results"]
-        elif isinstance(payload.get("web"), dict) and isinstance(payload["web"].get("results"), list):
+        elif isinstance(payload.get("web"), dict) and isinstance(
+            payload["web"].get("results"), list
+        ):
             candidates = payload["web"]["results"]
         elif isinstance(payload.get("data"), list):
             candidates = payload["data"]
@@ -1415,9 +1478,13 @@ def _normalize_web_search_results(payload: Any, limit: int) -> list[dict[str, st
     for item in candidates:
         if not isinstance(item, dict):
             continue
-        url_value = str(item.get("url") or item.get("link") or item.get("href") or "").strip()
+        url_value = str(
+            item.get("url") or item.get("link") or item.get("href") or ""
+        ).strip()
         title = str(item.get("title") or item.get("name") or url_value or "").strip()
-        snippet = str(item.get("snippet") or item.get("description") or item.get("content") or "").strip()
+        snippet = str(
+            item.get("snippet") or item.get("description") or item.get("content") or ""
+        ).strip()
         if not url_value:
             continue
         items.append({"title": title, "url": url_value, "snippet": snippet})
@@ -1426,9 +1493,116 @@ def _normalize_web_search_results(payload: Any, limit: int) -> list[dict[str, st
     return items
 
 
+def _external_search_allowed_hosts() -> set[str]:
+    raw = os.environ.get("QWEN_EXTERNAL_SEARCH_ALLOWED_HOSTS", "")
+    return {host.strip().lower().rstrip(".") for host in raw.split(",") if host.strip()}
+
+
+def _validate_public_http_url(
+    url: str,
+    *,
+    allowed_hosts: set[str] | None = None,
+) -> str:
+    candidate = str(url).strip()
+    parsed = urllib.parse.urlsplit(candidate)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("remote URL must use http or https")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise ValueError("remote URL must not contain credentials or a fragment")
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    if not hostname:
+        raise ValueError("remote URL must include a hostname")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("remote URL has an invalid port") from exc
+    if allowed_hosts is not None and not any(
+        hostname == allowed or hostname.endswith(f".{allowed}")
+        for allowed in allowed_hosts
+    ):
+        raise ValueError(f"remote URL host is not allowlisted: {hostname}")
+    if hostname in {"localhost", "localhost.localdomain", "ip6-localhost"}:
+        raise ValueError("remote URL must not target localhost")
+
+    try:
+        addresses = [ipaddress.ip_address(hostname)]
+    except ValueError:
+        try:
+            address_info = socket.getaddrinfo(
+                hostname,
+                port or (443 if parsed.scheme == "https" else 80),
+                type=socket.SOCK_STREAM,
+            )
+        except socket.gaierror as exc:
+            raise ValueError(
+                f"remote URL hostname could not be resolved: {hostname}"
+            ) from exc
+        addresses = []
+        for info in address_info:
+            sockaddr = info[4]
+            if sockaddr:
+                try:
+                    addresses.append(ipaddress.ip_address(sockaddr[0]))
+                except ValueError:
+                    continue
+    if not addresses or any(not address.is_global for address in addresses):
+        raise ValueError("remote URL must resolve only to public IP addresses")
+    return parsed.geturl()
+
+
+class _PublicRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, allowed_hosts: set[str] | None = None) -> None:
+        super().__init__()
+        self.allowed_hosts = allowed_hosts
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        redirect_url = urllib.parse.urljoin(
+            req.full_url if req is not None else "", newurl
+        )
+        validated_url = _validate_public_http_url(
+            redirect_url,
+            allowed_hosts=self.allowed_hosts,
+        )
+        return super().redirect_request(req, fp, code, msg, headers, validated_url)
+
+
+def _open_public_request(
+    request: urllib.request.Request,
+    *,
+    timeout: int,
+    context: ssl.SSLContext,
+    allowed_hosts: set[str] | None = None,
+) -> Any:
+    _validate_public_http_url(request.full_url, allowed_hosts=allowed_hosts)
+    opener = urllib.request.build_opener(
+        _PublicRedirectHandler(allowed_hosts),
+        urllib.request.HTTPSHandler(context=context),
+    )
+    return opener.open(request, timeout=timeout)
+
+
+def _api_knowledge_output_path(
+    settings_path: pathlib.Path,
+    requested_output: Any,
+) -> pathlib.Path | None:
+    if not isinstance(requested_output, str) or not requested_output.strip():
+        return None
+    del requested_output
+    return settings_path.expanduser().resolve().parent / "knowledge-exports"
+
+
 def fetch_web_document(url: str, timeout: int = DEFAULT_TIMEOUT) -> dict[str, Any]:
+    validated_url = _validate_public_http_url(url)
     req = urllib.request.Request(
-        url,
+        validated_url,
         headers={
             "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8",
             "User-Agent": f"qwen-omega/{VERSION}",
@@ -1436,11 +1610,13 @@ def fetch_web_document(url: str, timeout: int = DEFAULT_TIMEOUT) -> dict[str, An
         method="GET",
     )
     context = ssl.create_default_context()
-    with urllib.request.urlopen(req, timeout=timeout, context=context) as response:
+    with _open_public_request(req, timeout=timeout, context=context) as response:
         raw = response.read()
         content_type = response.headers.get("Content-Type", "")
     text = raw.decode("utf-8", "replace")
-    kind = "html" if "html" in content_type.lower() or "<html" in text.lower() else "text"
+    kind = (
+        "html" if "html" in content_type.lower() or "<html" in text.lower() else "text"
+    )
     title = ""
     body = text
     if kind == "html":
@@ -1450,14 +1626,14 @@ def fetch_web_document(url: str, timeout: int = DEFAULT_TIMEOUT) -> dict[str, An
         title = extractor.title or ""
         body = extractor.text() or text
     if not title:
-        title = str(url).rstrip("/").rsplit("/", 1)[-1] or url
+        title = validated_url.rstrip("/").rsplit("/", 1)[-1] or validated_url
     return {
-        "id": slugify(title or url),
+        "id": slugify(title or validated_url),
         "name": title,
         "content": body.strip(),
-        "path": url,
+        "path": validated_url,
         "kind": kind,
-        "description": f"Fetched from {url}",
+        "description": f"Fetched from {validated_url}",
         "size": len(raw),
     }
 
@@ -1474,6 +1650,16 @@ def fetch_web_search_results(
 ) -> list[dict[str, str]]:
     resolved_method = method.upper()
     if provider == "external":
+        configured_hosts = _external_search_allowed_hosts()
+        if api_key and not configured_hosts:
+            raise ValueError(
+                "external search API keys require QWEN_EXTERNAL_SEARCH_ALLOWED_HOSTS"
+            )
+        allowed_hosts = configured_hosts or None
+        validated_url = _validate_public_http_url(
+            engine_url,
+            allowed_hosts=allowed_hosts,
+        )
         body = json.dumps({"query": query, "count": limit}).encode("utf-8")
         headers = {
             "Accept": "application/json",
@@ -1482,9 +1668,16 @@ def fetch_web_search_results(
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        req = urllib.request.Request(engine_url, data=body, headers=headers, method="POST")
+        req = urllib.request.Request(
+            validated_url, data=body, headers=headers, method="POST"
+        )
         context = ssl.create_default_context()
-        with urllib.request.urlopen(req, timeout=timeout, context=context) as response:
+        with _open_public_request(
+            req,
+            timeout=timeout,
+            context=context,
+            allowed_hosts=allowed_hosts,
+        ) as response:
             raw = response.read()
         try:
             payload = json.loads(raw)
@@ -1498,6 +1691,7 @@ def fetch_web_search_results(
             q=urllib.parse.quote_plus(query),
             count=limit,
         )
+        url = _validate_public_http_url(url, allowed_hosts={"api.search.brave.com"})
         headers = {
             "Accept": "application/json",
             "User-Agent": f"qwen-omega/{VERSION}",
@@ -1506,7 +1700,12 @@ def fetch_web_search_results(
             headers["X-Subscription-Token"] = api_key
         req = urllib.request.Request(url, headers=headers, method="GET")
         context = ssl.create_default_context()
-        with urllib.request.urlopen(req, timeout=timeout, context=context) as response:
+        with _open_public_request(
+            req,
+            timeout=timeout,
+            context=context,
+            allowed_hosts={"api.search.brave.com"},
+        ) as response:
             raw = response.read()
         try:
             payload = json.loads(raw)
@@ -1519,6 +1718,7 @@ def fetch_web_search_results(
         q=urllib.parse.quote_plus(query),
         count=limit,
     )
+    url = _validate_public_http_url(url, allowed_hosts={"html.duckduckgo.com"})
     req = urllib.request.Request(
         url,
         headers={
@@ -1530,7 +1730,12 @@ def fetch_web_search_results(
     context = ssl.create_default_context()
     if resolved_method == "POST":
         req.data = json.dumps({"query": query, "count": limit}).encode("utf-8")
-    with urllib.request.urlopen(req, timeout=timeout, context=context) as response:
+    with _open_public_request(
+        req,
+        timeout=timeout,
+        context=context,
+        allowed_hosts={"html.duckduckgo.com"},
+    ) as response:
         raw = response.read()
         content_type = response.headers.get("Content-Type", "")
     if "json" in content_type.lower() or raw[:1] in {b"{", b"["}:
@@ -1579,9 +1784,11 @@ def fetch_web_search_results_chain(
     for index, provider in enumerate(ordered_providers):
         resolved_engine_url = engine_url if index == 0 else None
         try:
-            resolved_provider, resolved_engine_url, resolved_env_key = _resolve_web_search_provider(
-                provider,
-                resolved_engine_url,
+            resolved_provider, resolved_engine_url, resolved_env_key = (
+                _resolve_web_search_provider(
+                    provider,
+                    resolved_engine_url,
+                )
             )
             resolved_api_key = api_key or (
                 os.environ.get(resolved_env_key, "") if resolved_env_key else ""
@@ -1621,7 +1828,11 @@ def _save_web_search_results_to_settings(
     overlap: int = 200,
     timeout: int = DEFAULT_TIMEOUT,
 ) -> dict[str, Any]:
-    selected_urls = [str(item.get("url", "")).strip() for item in results[:save_limit] if str(item.get("url", "")).strip()]
+    selected_urls = [
+        str(item.get("url", "")).strip()
+        for item in results[:save_limit]
+        if str(item.get("url", "")).strip()
+    ]
     if not selected_urls:
         die("no web pages could be selected for knowledge saving")
 
@@ -1646,7 +1857,9 @@ def _save_web_search_results_to_settings(
     indexes = settings.setdefault("knowledgeIndexes", [])
     if not isinstance(indexes, list):
         die("knowledgeIndexes must be an array")
-    indexes[:] = [item for item in indexes if str(item.get("baseId")) != resolved_base_id]
+    indexes[:] = [
+        item for item in indexes if str(item.get("baseId")) != resolved_base_id
+    ]
     indexes.append(index)
     indexes.sort(key=lambda x: str(x.get("id", "")).lower())
 
@@ -1680,7 +1893,9 @@ def _normalize_index_payload(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, dict):
         if "documents" in payload:
             return [payload]
-        payload = payload.get("knowledgeIndexes", payload.get("indexes", payload.get("items", [])))
+        payload = payload.get(
+            "knowledgeIndexes", payload.get("indexes", payload.get("items", []))
+        )
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     return []
@@ -1710,7 +1925,9 @@ def _load_knowledge_indexes_source(source: pathlib.Path) -> list[dict[str, Any]]
     return _normalize_index_payload(payload)
 
 
-def _load_knowledge_indexes_from_settings(settings: dict[str, Any]) -> list[dict[str, Any]]:
+def _load_knowledge_indexes_from_settings(
+    settings: dict[str, Any],
+) -> list[dict[str, Any]]:
     indexes = settings.get("knowledgeIndexes", [])
     if isinstance(indexes, list):
         return [item for item in indexes if isinstance(item, dict)]
@@ -1728,7 +1945,9 @@ def _refresh_knowledge_base_documents(
     sources = base.get("sources")
     cleaned_sources: list[str] = []
     if isinstance(sources, list):
-        cleaned_sources = [str(source).strip() for source in sources if str(source).strip()]
+        cleaned_sources = [
+            str(source).strip() for source in sources if str(source).strip()
+        ]
 
     if cleaned_sources and all(_is_http_url(source) for source in cleaned_sources):
         documents: list[dict[str, Any]] = []
@@ -1774,7 +1993,9 @@ def _refresh_knowledge_base_entry(
     refreshed_base["enabled"] = bool(base.get("enabled", True))
     if isinstance(base.get("sources"), list):
         refreshed_sources = [
-            str(source).strip() for source in base.get("sources", []) if str(source).strip()
+            str(source).strip()
+            for source in base.get("sources", [])
+            if str(source).strip()
         ]
         refreshed_base["sources"] = refreshed_sources or [source_label]
     else:
@@ -1807,7 +2028,9 @@ def _search_knowledge_indexes(
             chunks = doc.get("chunks", [])
             if isinstance(chunks, list):
                 doc_text_parts.extend(
-                    str(chunk.get("text", "")) for chunk in chunks if isinstance(chunk, dict)
+                    str(chunk.get("text", ""))
+                    for chunk in chunks
+                    if isinstance(chunk, dict)
                 )
             haystack = "\n".join(doc_text_parts).lower()
             if not haystack:
@@ -1828,7 +2051,9 @@ def _search_knowledge_indexes(
                         snippet = text
                         break
             if not snippet:
-                snippet = str(doc.get("relativePath") or doc.get("title") or doc.get("id") or "")
+                snippet = str(
+                    doc.get("relativePath") or doc.get("title") or doc.get("id") or ""
+                )
             matches.append(
                 {
                     "indexId": str(index.get("id") or ""),
@@ -1841,7 +2066,13 @@ def _search_knowledge_indexes(
                     "snippet": snippet,
                 }
             )
-    matches.sort(key=lambda item: (-int(item.get("score", 0)), item["title"].lower(), item["documentId"]))
+    matches.sort(
+        key=lambda item: (
+            -int(item.get("score", 0)),
+            item["title"].lower(),
+            item["documentId"],
+        )
+    )
     return matches
 
 
@@ -1870,17 +2101,37 @@ def normalize_notes(settings: dict[str, Any]) -> list[dict[str, Any]]:
                     "title": str(title).strip(),
                     "body": body,
                     **(
-                        {"files": [str(entry).strip() for entry in item.get("files", item.get("attachments", [])) if str(entry).strip()]}
+                        {
+                            "files": [
+                                str(entry).strip()
+                                for entry in item.get(
+                                    "files", item.get("attachments", [])
+                                )
+                                if str(entry).strip()
+                            ]
+                        }
                         if isinstance(item.get("files", item.get("attachments")), list)
                         else {}
                     ),
                     **(
-                        {"images": [str(entry).strip() for entry in item.get("images", []) if str(entry).strip()]}
+                        {
+                            "images": [
+                                str(entry).strip()
+                                for entry in item.get("images", [])
+                                if str(entry).strip()
+                            ]
+                        }
                         if isinstance(item.get("images"), list)
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -1902,7 +2153,9 @@ def normalize_notes(settings: dict[str, Any]) -> list[dict[str, Any]]:
         normalized = []
         for key, value in notes.items():
             if isinstance(value, str):
-                normalized.append({"id": str(key).strip(), "title": str(key).strip(), "body": value})
+                normalized.append(
+                    {"id": str(key).strip(), "title": str(key).strip(), "body": value}
+                )
                 continue
             if isinstance(value, dict):
                 item = dict(value)
@@ -1916,7 +2169,11 @@ def normalize_notes(settings: dict[str, Any]) -> list[dict[str, Any]]:
                             if str(entry).strip()
                         ]
                     if isinstance(item.get("images"), list):
-                        item["images"] = [str(entry).strip() for entry in item.get("images", []) if str(entry).strip()]
+                        item["images"] = [
+                            str(entry).strip()
+                            for entry in item.get("images", [])
+                            if str(entry).strip()
+                        ]
                     normalized.append(item)
                 elif isinstance(item.get("content"), str) and item["content"].strip():
                     item["body"] = item.pop("content")
@@ -1927,7 +2184,11 @@ def normalize_notes(settings: dict[str, Any]) -> list[dict[str, Any]]:
                             if str(entry).strip()
                         ]
                     if isinstance(item.get("images"), list):
-                        item["images"] = [str(entry).strip() for entry in item.get("images", []) if str(entry).strip()]
+                        item["images"] = [
+                            str(entry).strip()
+                            for entry in item.get("images", [])
+                            if str(entry).strip()
+                        ]
                     normalized.append(item)
         settings["notes"] = normalized
         return normalized
@@ -1961,11 +2222,18 @@ def normalize_artifacts(settings: dict[str, Any]) -> list[dict[str, Any]]:
                     "content": content,
                     **(
                         {"kind": str(item["kind"]).strip()}
-                        if isinstance(item.get("kind"), str) and str(item.get("kind")).strip()
+                        if isinstance(item.get("kind"), str)
+                        and str(item.get("kind")).strip()
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -1977,7 +2245,13 @@ def normalize_artifacts(settings: dict[str, Any]) -> list[dict[str, Any]]:
         normalized = []
         for key, value in artifacts.items():
             if isinstance(value, str):
-                normalized.append({"id": str(key).strip(), "title": str(key).strip(), "content": value})
+                normalized.append(
+                    {
+                        "id": str(key).strip(),
+                        "title": str(key).strip(),
+                        "content": value,
+                    }
+                )
                 continue
             if isinstance(value, dict):
                 item = dict(value)
@@ -2009,29 +2283,38 @@ def normalize_conversations(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 continue
             if not isinstance(title, str) or not title.strip():
                 title = convo_id.strip()
-            if not isinstance(transcript, str) or not transcript.strip():
-                transcript = ""
             normalized_item: dict[str, Any] = {
                 "id": convo_id.strip(),
                 "title": str(title).strip(),
-                "transcript": transcript,
             }
-            system_prompt = item.get("systemPrompt", item.get("instructions", item.get("prompt")))
+            if isinstance(transcript, str) and transcript.strip():
+                normalized_item["transcript"] = transcript
+            system_prompt = item.get(
+                "systemPrompt", item.get("instructions", item.get("prompt"))
+            )
             if isinstance(system_prompt, str) and system_prompt.strip():
                 normalized_item["systemPrompt"] = system_prompt.strip()
             knowledge = item.get("knowledge")
             if isinstance(knowledge, list):
-                values = [str(entry).strip() for entry in knowledge if str(entry).strip()]
+                values = [
+                    str(entry).strip() for entry in knowledge if str(entry).strip()
+                ]
                 if values:
                     normalized_item["knowledge"] = values
             attachments = item.get("files", item.get("attachments"))
             if isinstance(attachments, list):
-                values = [str(entry).strip() for entry in attachments if str(entry).strip()]
+                values = [
+                    str(entry).strip() for entry in attachments if str(entry).strip()
+                ]
                 if values:
                     normalized_item["files"] = values
             image_attachments = item.get("images")
             if isinstance(image_attachments, list):
-                values = [str(entry).strip() for entry in image_attachments if str(entry).strip()]
+                values = [
+                    str(entry).strip()
+                    for entry in image_attachments
+                    if str(entry).strip()
+                ]
                 if values:
                     normalized_item["images"] = values
             if isinstance(messages, list):
@@ -2062,7 +2345,9 @@ def normalize_conversations(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 ]
             compare_models = item.get("compareModels")
             if isinstance(compare_models, list):
-                values = [str(entry).strip() for entry in compare_models if str(entry).strip()]
+                values = [
+                    str(entry).strip() for entry in compare_models if str(entry).strip()
+                ]
                 if values:
                     normalized_item["compareModels"] = values
             folder_id = item.get("folderId", item.get("folder"))
@@ -2079,13 +2364,22 @@ def normalize_conversations(settings: dict[str, Any]) -> list[dict[str, Any]]:
         normalized = []
         for key, value in conversations.items():
             if isinstance(value, str):
-                normalized.append({"id": str(key).strip(), "title": str(key).strip(), "transcript": value})
+                normalized.append(
+                    {
+                        "id": str(key).strip(),
+                        "title": str(key).strip(),
+                        "transcript": value,
+                    }
+                )
                 continue
             if isinstance(value, dict):
                 item = dict(value)
                 item.setdefault("id", str(key).strip())
                 item.setdefault("title", str(key).strip())
-                if isinstance(item.get("transcript"), str) and item["transcript"].strip():
+                if (
+                    isinstance(item.get("transcript"), str)
+                    and item["transcript"].strip()
+                ):
                     normalized.append(item)
                 elif isinstance(item.get("content"), str) and item["content"].strip():
                     item["transcript"] = item.pop("content")
@@ -2120,19 +2414,32 @@ def normalize_channels(settings: dict[str, Any]) -> list[dict[str, Any]]:
             }
             if isinstance(transcript, str) and transcript.strip():
                 normalized_item["transcript"] = transcript.strip()
-            if isinstance(item.get("systemPrompt"), str) and str(item.get("systemPrompt")).strip():
+            if (
+                isinstance(item.get("systemPrompt"), str)
+                and str(item.get("systemPrompt")).strip()
+            ):
                 normalized_item["systemPrompt"] = str(item["systemPrompt"]).strip()
             if isinstance(item.get("knowledge"), list):
-                values = [str(entry).strip() for entry in item.get("knowledge", []) if str(entry).strip()]
+                values = [
+                    str(entry).strip()
+                    for entry in item.get("knowledge", [])
+                    if str(entry).strip()
+                ]
                 if values:
                     normalized_item["knowledge"] = values
             attachments = item.get("files", item.get("attachments"))
             if isinstance(attachments, list):
-                values = [str(entry).strip() for entry in attachments if str(entry).strip()]
+                values = [
+                    str(entry).strip() for entry in attachments if str(entry).strip()
+                ]
                 if values:
                     normalized_item["files"] = values
             if isinstance(item.get("images"), list):
-                values = [str(entry).strip() for entry in item.get("images", []) if str(entry).strip()]
+                values = [
+                    str(entry).strip()
+                    for entry in item.get("images", [])
+                    if str(entry).strip()
+                ]
                 if values:
                     normalized_item["images"] = values
             if isinstance(messages, list):
@@ -2146,7 +2453,9 @@ def normalize_channels(settings: dict[str, Any]) -> list[dict[str, Any]]:
                         continue
                     if not isinstance(content, str) or not content.strip():
                         continue
-                    normalized_messages.append({"role": role.strip(), "content": content.strip()})
+                    normalized_messages.append(
+                        {"role": role.strip(), "content": content.strip()}
+                    )
                 if normalized_messages:
                     normalized_item["messages"] = normalized_messages
                     if "transcript" not in normalized_item:
@@ -2154,7 +2463,9 @@ def normalize_channels(settings: dict[str, Any]) -> list[dict[str, Any]]:
                             f"{m['role']}: {m['content']}" for m in normalized_messages
                         )
             if isinstance(item.get("tags"), list):
-                values = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                values = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if values:
                     normalized_item["tags"] = values
             if item.get("pinned") is not None:
@@ -2168,13 +2479,22 @@ def normalize_channels(settings: dict[str, Any]) -> list[dict[str, Any]]:
         normalized = []
         for key, value in channels.items():
             if isinstance(value, str):
-                normalized.append({"id": str(key).strip(), "title": str(key).strip(), "transcript": value})
+                normalized.append(
+                    {
+                        "id": str(key).strip(),
+                        "title": str(key).strip(),
+                        "transcript": value,
+                    }
+                )
                 continue
             if isinstance(value, dict):
                 item = dict(value)
                 item.setdefault("id", str(key).strip())
                 item.setdefault("title", str(key).strip())
-                if isinstance(item.get("transcript"), str) and item["transcript"].strip():
+                if (
+                    isinstance(item.get("transcript"), str)
+                    and item["transcript"].strip()
+                ):
                     normalized.append(item)
                 elif isinstance(item.get("content"), str) and item["content"].strip():
                     item["transcript"] = item.pop("content")
@@ -2215,7 +2535,9 @@ def normalize_folders(settings: dict[str, Any]) -> list[dict[str, Any]]:
             for key in ("knowledge", "tags"):
                 value = item.get(key)
                 if isinstance(value, list):
-                    items = [str(entry).strip() for entry in value if str(entry).strip()]
+                    items = [
+                        str(entry).strip() for entry in value if str(entry).strip()
+                    ]
                     if items:
                         normalized_item[key] = items
             if item.get("pinned") is not None:
@@ -2281,10 +2603,15 @@ def normalize_files(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 normalized_item["path"] = str(item["path"]).strip()
             if isinstance(item.get("kind"), str) and str(item.get("kind")).strip():
                 normalized_item["kind"] = str(item["kind"]).strip()
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized_item["description"] = str(item["description"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized_item["tags"] = tags
             if item.get("size") is not None:
@@ -2303,7 +2630,9 @@ def normalize_files(settings: dict[str, Any]) -> list[dict[str, Any]]:
         normalized = []
         for key, value in files.items():
             if isinstance(value, str):
-                normalized.append({"id": str(key).strip(), "name": str(key).strip(), "content": value})
+                normalized.append(
+                    {"id": str(key).strip(), "name": str(key).strip(), "content": value}
+                )
                 continue
             if isinstance(value, dict):
                 item = dict(value)
@@ -2330,7 +2659,9 @@ def normalize_agents(settings: dict[str, Any]) -> list[dict[str, Any]]:
             agent_id = item.get("id")
             name = item.get("name")
             base_model = item.get("baseModel", item.get("model"))
-            system_prompt = item.get("systemPrompt", item.get("instructions", item.get("prompt")))
+            system_prompt = item.get(
+                "systemPrompt", item.get("instructions", item.get("prompt"))
+            )
             if not isinstance(agent_id, str) or not agent_id.strip():
                 continue
             if not isinstance(name, str) or not name.strip():
@@ -2344,14 +2675,22 @@ def normalize_agents(settings: dict[str, Any]) -> list[dict[str, Any]]:
             }
             if isinstance(system_prompt, str) and system_prompt.strip():
                 normalized_item["systemPrompt"] = system_prompt
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized_item["description"] = str(item["description"]).strip()
-            if isinstance(item.get("folderId"), str) and str(item.get("folderId")).strip():
+            if (
+                isinstance(item.get("folderId"), str)
+                and str(item.get("folderId")).strip()
+            ):
                 normalized_item["folderId"] = str(item["folderId"]).strip()
             for key in ("tags", "tools", "knowledge", "skills"):
                 value = item.get(key)
                 if isinstance(value, list):
-                    items = [str(entry).strip() for entry in value if str(entry).strip()]
+                    items = [
+                        str(entry).strip() for entry in value if str(entry).strip()
+                    ]
                     if items:
                         normalized_item[key] = items
             if isinstance(item.get("parameters"), dict):
@@ -2360,7 +2699,10 @@ def normalize_agents(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 normalized_item["avatar"] = str(item["avatar"]).strip()
             if isinstance(item.get("voice"), str) and str(item.get("voice")).strip():
                 normalized_item["voice"] = str(item["voice"]).strip()
-            if isinstance(item.get("visibility"), str) and str(item.get("visibility")).strip():
+            if (
+                isinstance(item.get("visibility"), str)
+                and str(item.get("visibility")).strip()
+            ):
                 normalized_item["visibility"] = str(item["visibility"]).strip()
             if item.get("pinned") is not None:
                 normalized_item["pinned"] = bool(item["pinned"])
@@ -2511,7 +2853,9 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     if selected_type is not None and (
                         not isinstance(selected_type, str) or not selected_type.strip()
                     ):
-                        errors.append("security.auth.selectedType must be a non-empty string")
+                        errors.append(
+                            "security.auth.selectedType must be a non-empty string"
+                        )
                     admin_emails = auth.get("adminEmails")
                     if admin_emails is not None:
                         if not isinstance(admin_emails, list):
@@ -2545,13 +2889,17 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 template_id = template.get("id")
                 content = template.get("content")
                 if not isinstance(template_id, str) or not template_id.strip():
-                    errors.append(f"promptTemplates[{index}].id must be a non-empty string")
+                    errors.append(
+                        f"promptTemplates[{index}].id must be a non-empty string"
+                    )
                 elif template_id in seen_prompts:
                     errors.append(f"duplicate prompt template id: {template_id}")
                 else:
                     seen_prompts.add(template_id)
                 if not isinstance(content, str) or not content.strip():
-                    errors.append(f"promptTemplates[{index}].content must be a non-empty string")
+                    errors.append(
+                        f"promptTemplates[{index}].content must be a non-empty string"
+                    )
     skills = settings.get("skills")
     if skills is not None:
         if not isinstance(skills, list):
@@ -2606,7 +2954,9 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 if not isinstance(name, str) or not name.strip():
                     errors.append(f"plugins[{index}].name must be a non-empty string")
                 if not isinstance(content, str) or not content.strip():
-                    errors.append(f"plugins[{index}].content must be a non-empty string")
+                    errors.append(
+                        f"plugins[{index}].content must be a non-empty string"
+                    )
                 tags = plugin.get("tags")
                 if tags is not None and not isinstance(tags, list):
                     errors.append(f"plugins[{index}].tags must be an array")
@@ -2645,7 +2995,9 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 if not isinstance(name, str) or not name.strip():
                     errors.append(f"pipelines[{index}].name must be a non-empty string")
                 if not isinstance(content, str) or not content.strip():
-                    errors.append(f"pipelines[{index}].content must be a non-empty string")
+                    errors.append(
+                        f"pipelines[{index}].content must be a non-empty string"
+                    )
                 tags = pipeline.get("tags")
                 if tags is not None and not isinstance(tags, list):
                     errors.append(f"pipelines[{index}].tags must be an array")
@@ -2677,31 +3029,47 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     name = item.get("name")
                     content = item.get("content", item.get("instructions"))
                     if not isinstance(item_id, str) or not item_id.strip():
-                        errors.append(f"{registry_name}[{index}].id must be a non-empty string")
+                        errors.append(
+                            f"{registry_name}[{index}].id must be a non-empty string"
+                        )
                     elif item_id in seen_registry:
                         errors.append(f"duplicate {registry_name[:-1]} id: {item_id}")
                     else:
                         seen_registry.add(item_id)
                     if not isinstance(name, str) or not name.strip():
-                        errors.append(f"{registry_name}[{index}].name must be a non-empty string")
+                        errors.append(
+                            f"{registry_name}[{index}].name must be a non-empty string"
+                        )
                     if not isinstance(content, str) or not content.strip():
-                        errors.append(f"{registry_name}[{index}].content must be a non-empty string")
+                        errors.append(
+                            f"{registry_name}[{index}].content must be a non-empty string"
+                        )
                     tags = item.get("tags")
                     if tags is not None and not isinstance(tags, list):
                         errors.append(f"{registry_name}[{index}].tags must be an array")
                     for key in ("tools", "knowledge", "skills", "events"):
                         values = item.get(key)
                         if values is not None and not isinstance(values, list):
-                            errors.append(f"{registry_name}[{index}].{key} must be an array")
+                            errors.append(
+                                f"{registry_name}[{index}].{key} must be an array"
+                            )
                     url = item.get("url")
-                    if url is not None and (not isinstance(url, str) or not url.strip()):
-                        errors.append(f"{registry_name}[{index}].url must be a non-empty string")
+                    if url is not None and (
+                        not isinstance(url, str) or not url.strip()
+                    ):
+                        errors.append(
+                            f"{registry_name}[{index}].url must be a non-empty string"
+                        )
                     enabled = item.get("enabled")
                     if enabled is not None and not isinstance(enabled, bool):
-                        errors.append(f"{registry_name}[{index}].enabled must be a boolean")
+                        errors.append(
+                            f"{registry_name}[{index}].enabled must be a boolean"
+                        )
                     archived = item.get("archived")
                     if archived is not None and not isinstance(archived, bool):
-                        errors.append(f"{registry_name}[{index}].archived must be a boolean")
+                        errors.append(
+                            f"{registry_name}[{index}].archived must be a boolean"
+                        )
     automations = settings.get("automations")
     if automations is not None:
         if not isinstance(automations, list):
@@ -2723,17 +3091,31 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 else:
                     seen_automations.add(automation_id)
                 if not isinstance(name, str) or not name.strip():
-                    errors.append(f"automations[{index}].name must be a non-empty string")
+                    errors.append(
+                        f"automations[{index}].name must be a non-empty string"
+                    )
                 if not isinstance(prompt, str) or not prompt.strip():
-                    errors.append(f"automations[{index}].prompt must be a non-empty string")
+                    errors.append(
+                        f"automations[{index}].prompt must be a non-empty string"
+                    )
                 if not isinstance(schedule, str) or not schedule.strip():
-                    errors.append(f"automations[{index}].schedule must be a non-empty string")
+                    errors.append(
+                        f"automations[{index}].schedule must be a non-empty string"
+                    )
                 timezone = automation.get("timezone")
-                if timezone is not None and (not isinstance(timezone, str) or not timezone.strip()):
-                    errors.append(f"automations[{index}].timezone must be a non-empty string")
+                if timezone is not None and (
+                    not isinstance(timezone, str) or not timezone.strip()
+                ):
+                    errors.append(
+                        f"automations[{index}].timezone must be a non-empty string"
+                    )
                 model = automation.get("model")
-                if model is not None and (not isinstance(model, str) or not model.strip()):
-                    errors.append(f"automations[{index}].model must be a non-empty string")
+                if model is not None and (
+                    not isinstance(model, str) or not model.strip()
+                ):
+                    errors.append(
+                        f"automations[{index}].model must be a non-empty string"
+                    )
                 tags = automation.get("tags")
                 if tags is not None and not isinstance(tags, list):
                     errors.append(f"automations[{index}].tags must be an array")
@@ -2763,9 +3145,15 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 else:
                     seen_tools.add(server_id)
                 if not isinstance(name, str) or not name.strip():
-                    errors.append(f"toolServers[{index}].name must be a non-empty string")
-                if endpoint is not None and (not isinstance(endpoint, str) or not endpoint.strip()):
-                    errors.append(f"toolServers[{index}].endpoint must be a non-empty string")
+                    errors.append(
+                        f"toolServers[{index}].name must be a non-empty string"
+                    )
+                if endpoint is not None and (
+                    not isinstance(endpoint, str) or not endpoint.strip()
+                ):
+                    errors.append(
+                        f"toolServers[{index}].endpoint must be a non-empty string"
+                    )
     knowledge_bases = settings.get("knowledgeBases")
     if knowledge_bases is not None:
         if not isinstance(knowledge_bases, list):
@@ -2780,15 +3168,23 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 name = base.get("name")
                 source_dir = base.get("sourceDir")
                 if not isinstance(base_id, str) or not base_id.strip():
-                    errors.append(f"knowledgeBases[{index}].id must be a non-empty string")
+                    errors.append(
+                        f"knowledgeBases[{index}].id must be a non-empty string"
+                    )
                 elif base_id in seen_bases:
                     errors.append(f"duplicate knowledge base id: {base_id}")
                 else:
                     seen_bases.add(base_id)
                 if not isinstance(name, str) or not name.strip():
-                    errors.append(f"knowledgeBases[{index}].name must be a non-empty string")
-                if source_dir is not None and (not isinstance(source_dir, str) or not source_dir.strip()):
-                    errors.append(f"knowledgeBases[{index}].sourceDir must be a non-empty string")
+                    errors.append(
+                        f"knowledgeBases[{index}].name must be a non-empty string"
+                    )
+                if source_dir is not None and (
+                    not isinstance(source_dir, str) or not source_dir.strip()
+                ):
+                    errors.append(
+                        f"knowledgeBases[{index}].sourceDir must be a non-empty string"
+                    )
     knowledge_indexes = settings.get("knowledgeIndexes")
     if knowledge_indexes is not None:
         if not isinstance(knowledge_indexes, list):
@@ -2804,17 +3200,29 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 path_value = idx.get("path")
                 source_dir = idx.get("sourceDir")
                 if not isinstance(index_id, str) or not index_id.strip():
-                    errors.append(f"knowledgeIndexes[{index}].id must be a non-empty string")
+                    errors.append(
+                        f"knowledgeIndexes[{index}].id must be a non-empty string"
+                    )
                 elif index_id in seen_indexes:
                     errors.append(f"duplicate knowledge index id: {index_id}")
                 else:
                     seen_indexes.add(index_id)
                 if not isinstance(base_id, str) or not base_id.strip():
-                    errors.append(f"knowledgeIndexes[{index}].baseId must be a non-empty string")
-                if path_value is not None and (not isinstance(path_value, str) or not path_value.strip()):
-                    errors.append(f"knowledgeIndexes[{index}].path must be a non-empty string")
-                if source_dir is not None and (not isinstance(source_dir, str) or not source_dir.strip()):
-                    errors.append(f"knowledgeIndexes[{index}].sourceDir must be a non-empty string")
+                    errors.append(
+                        f"knowledgeIndexes[{index}].baseId must be a non-empty string"
+                    )
+                if path_value is not None and (
+                    not isinstance(path_value, str) or not path_value.strip()
+                ):
+                    errors.append(
+                        f"knowledgeIndexes[{index}].path must be a non-empty string"
+                    )
+                if source_dir is not None and (
+                    not isinstance(source_dir, str) or not source_dir.strip()
+                ):
+                    errors.append(
+                        f"knowledgeIndexes[{index}].sourceDir must be a non-empty string"
+                    )
     folders = settings.get("folders")
     if folders is not None:
         if not isinstance(folders, list):
@@ -2839,20 +3247,30 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     seen_folders.add(folder_id)
                 if not isinstance(name, str) or not name.strip():
                     errors.append(f"folders[{index}].name must be a non-empty string")
-                if parent_id is not None and (not isinstance(parent_id, str) or not parent_id.strip()):
-                    errors.append(f"folders[{index}].parentId must be a non-empty string")
+                if parent_id is not None and (
+                    not isinstance(parent_id, str) or not parent_id.strip()
+                ):
+                    errors.append(
+                        f"folders[{index}].parentId must be a non-empty string"
+                    )
                 if system_prompt is not None and (
                     not isinstance(system_prompt, str) or not system_prompt.strip()
                 ):
-                    errors.append(f"folders[{index}].systemPrompt must be a non-empty string")
+                    errors.append(
+                        f"folders[{index}].systemPrompt must be a non-empty string"
+                    )
                 if description is not None and (
                     not isinstance(description, str) or not description.strip()
                 ):
-                    errors.append(f"folders[{index}].description must be a non-empty string")
+                    errors.append(
+                        f"folders[{index}].description must be a non-empty string"
+                    )
                 if source_dir is not None and (
                     not isinstance(source_dir, str) or not source_dir.strip()
                 ):
-                    errors.append(f"folders[{index}].sourceDir must be a non-empty string")
+                    errors.append(
+                        f"folders[{index}].sourceDir must be a non-empty string"
+                    )
                 for key in ("knowledge", "tags"):
                     value = folder.get(key)
                     if value is not None and not isinstance(value, list):
@@ -2896,7 +3314,9 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     else:
                         for f_index, file_id in enumerate(files):
                             if not isinstance(file_id, str) or not file_id.strip():
-                                errors.append(f"notes[{index}].files[{f_index}] must be a non-empty string")
+                                errors.append(
+                                    f"notes[{index}].files[{f_index}] must be a non-empty string"
+                                )
                 images = note.get("images")
                 if images is not None:
                     if not isinstance(images, list):
@@ -2904,7 +3324,9 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     else:
                         for i_index, image_id in enumerate(images):
                             if not isinstance(image_id, str) or not image_id.strip():
-                                errors.append(f"notes[{index}].images[{i_index}] must be a non-empty string")
+                                errors.append(
+                                    f"notes[{index}].images[{i_index}] must be a non-empty string"
+                                )
     memories = settings.get("memories")
     if memories is not None:
         if not isinstance(memories, list):
@@ -2928,8 +3350,12 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 if not isinstance(title, str) or not title.strip():
                     errors.append(f"memories[{index}].title must be a non-empty string")
                 if not isinstance(content, str) or not content.strip():
-                    errors.append(f"memories[{index}].content must be a non-empty string")
-                if scope is not None and (not isinstance(scope, str) or not scope.strip()):
+                    errors.append(
+                        f"memories[{index}].content must be a non-empty string"
+                    )
+                if scope is not None and (
+                    not isinstance(scope, str) or not scope.strip()
+                ):
                     errors.append(f"memories[{index}].scope must be a non-empty string")
                 tags = memory.get("tags")
                 if tags is not None and not isinstance(tags, list):
@@ -2960,9 +3386,13 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 else:
                     seen_artifacts.add(artifact_id)
                 if not isinstance(title, str) or not title.strip():
-                    errors.append(f"artifacts[{index}].title must be a non-empty string")
+                    errors.append(
+                        f"artifacts[{index}].title must be a non-empty string"
+                    )
                 if not isinstance(content, str) or not content.strip():
-                    errors.append(f"artifacts[{index}].content must be a non-empty string")
+                    errors.append(
+                        f"artifacts[{index}].content must be a non-empty string"
+                    )
     files = settings.get("files")
     if files is not None:
         if not isinstance(files, list):
@@ -2985,9 +3415,13 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     seen_files.add(file_id)
                 if not isinstance(name, str) or not name.strip():
                     errors.append(f"files[{index}].name must be a non-empty string")
-                if content is not None and (not isinstance(content, str) or not content.strip()):
+                if content is not None and (
+                    not isinstance(content, str) or not content.strip()
+                ):
                     errors.append(f"files[{index}].content must be a non-empty string")
-                if path_value is not None and (not isinstance(path_value, str) or not path_value.strip()):
+                if path_value is not None and (
+                    not isinstance(path_value, str) or not path_value.strip()
+                ):
                     errors.append(f"files[{index}].path must be a non-empty string")
                 kind = file_item.get("kind")
                 if kind is not None and (not isinstance(kind, str) or not kind.strip()):
@@ -3028,13 +3462,23 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     else:
                         for e_index, event in enumerate(events):
                             if not isinstance(event, str) or not event.strip():
-                                errors.append(f"webhooks[{index}].events[{e_index}] must be a non-empty string")
+                                errors.append(
+                                    f"webhooks[{index}].events[{e_index}] must be a non-empty string"
+                                )
                 description = hook.get("description")
-                if description is not None and (not isinstance(description, str) or not description.strip()):
-                    errors.append(f"webhooks[{index}].description must be a non-empty string")
+                if description is not None and (
+                    not isinstance(description, str) or not description.strip()
+                ):
+                    errors.append(
+                        f"webhooks[{index}].description must be a non-empty string"
+                    )
                 secret = hook.get("secret")
-                if secret is not None and (not isinstance(secret, str) or not secret.strip()):
-                    errors.append(f"webhooks[{index}].secret must be a non-empty string")
+                if secret is not None and (
+                    not isinstance(secret, str) or not secret.strip()
+                ):
+                    errors.append(
+                        f"webhooks[{index}].secret must be a non-empty string"
+                    )
                 tags = hook.get("tags")
                 if tags is not None and not isinstance(tags, list):
                     errors.append(f"webhooks[{index}].tags must be an array")
@@ -3057,20 +3501,41 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 messages = convo.get("messages")
                 compare_models = convo.get("compareModels")
                 if not isinstance(convo_id, str) or not convo_id.strip():
-                    errors.append(f"conversations[{index}].id must be a non-empty string")
+                    errors.append(
+                        f"conversations[{index}].id must be a non-empty string"
+                    )
                 elif convo_id in seen_conversations:
                     errors.append(f"duplicate conversation id: {convo_id}")
                 else:
                     seen_conversations.add(convo_id)
                 if not isinstance(title, str) or not title.strip():
-                    errors.append(f"conversations[{index}].title must be a non-empty string")
-                if transcript is not None and (not isinstance(transcript, str) or not transcript.strip()):
-                    errors.append(f"conversations[{index}].transcript must be a non-empty string")
-                system_prompt = convo.get("systemPrompt", convo.get("instructions", convo.get("prompt")))
+                    errors.append(
+                        f"conversations[{index}].title must be a non-empty string"
+                    )
+                if transcript is not None and (
+                    not isinstance(transcript, str) or not transcript.strip()
+                ):
+                    errors.append(
+                        f"conversations[{index}].transcript must be a non-empty string"
+                    )
+                system_prompt = convo.get(
+                    "systemPrompt", convo.get("instructions", convo.get("prompt"))
+                )
                 if system_prompt is not None and (
                     not isinstance(system_prompt, str) or not system_prompt.strip()
                 ):
-                    errors.append(f"conversations[{index}].systemPrompt must be a non-empty string")
+                    errors.append(
+                        f"conversations[{index}].systemPrompt must be a non-empty string"
+                    )
+                clear_context_index = convo.get("clearContextIndex")
+                if clear_context_index is not None and (
+                    not isinstance(clear_context_index, int)
+                    or isinstance(clear_context_index, bool)
+                    or clear_context_index < 0
+                ):
+                    errors.append(
+                        f"conversations[{index}].clearContextIndex must be a non-negative integer"
+                    )
                 knowledge = convo.get("knowledge")
                 if knowledge is not None and not isinstance(knowledge, list):
                     errors.append(f"conversations[{index}].knowledge must be an array")
@@ -3081,7 +3546,9 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     else:
                         for f_index, file_id in enumerate(attachments):
                             if not isinstance(file_id, str) or not file_id.strip():
-                                errors.append(f"conversations[{index}].files[{f_index}] must be a non-empty string")
+                                errors.append(
+                                    f"conversations[{index}].files[{f_index}] must be a non-empty string"
+                                )
                 images = convo.get("images")
                 if images is not None:
                     if not isinstance(images, list):
@@ -3093,11 +3560,17 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                                     f"conversations[{index}].images[{i_index}] must be a non-empty string"
                                 )
                 folder_id = convo.get("folderId", convo.get("folder"))
-                if folder_id is not None and (not isinstance(folder_id, str) or not folder_id.strip()):
-                    errors.append(f"conversations[{index}].folderId must be a non-empty string")
+                if folder_id is not None and (
+                    not isinstance(folder_id, str) or not folder_id.strip()
+                ):
+                    errors.append(
+                        f"conversations[{index}].folderId must be a non-empty string"
+                    )
                 if compare_models is not None:
                     if not isinstance(compare_models, list):
-                        errors.append(f"conversations[{index}].compareModels must be an array")
+                        errors.append(
+                            f"conversations[{index}].compareModels must be an array"
+                        )
                     else:
                         for c_index, model_id in enumerate(compare_models):
                             if not isinstance(model_id, str) or not model_id.strip():
@@ -3106,18 +3579,26 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                                 )
                 if messages is not None:
                     if not isinstance(messages, list):
-                        errors.append(f"conversations[{index}].messages must be an array")
+                        errors.append(
+                            f"conversations[{index}].messages must be an array"
+                        )
                     else:
                         for m_index, msg in enumerate(messages):
                             if not isinstance(msg, dict):
-                                errors.append(f"conversations[{index}].messages[{m_index}] must be an object")
+                                errors.append(
+                                    f"conversations[{index}].messages[{m_index}] must be an object"
+                                )
                                 continue
                             role = msg.get("role")
                             content = msg.get("content")
                             if not isinstance(role, str) or not role.strip():
-                                errors.append(f"conversations[{index}].messages[{m_index}].role must be a non-empty string")
+                                errors.append(
+                                    f"conversations[{index}].messages[{m_index}].role must be a non-empty string"
+                                )
                             if not isinstance(content, str) or not content.strip():
-                                errors.append(f"conversations[{index}].messages[{m_index}].content must be a non-empty string")
+                                errors.append(
+                                    f"conversations[{index}].messages[{m_index}].content must be a non-empty string"
+                                )
     channels = settings.get("channels")
     if channels is not None:
         if not isinstance(channels, list):
@@ -3140,13 +3621,21 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     seen_channels.add(channel_id)
                 if not isinstance(title, str) or not title.strip():
                     errors.append(f"channels[{index}].title must be a non-empty string")
-                if transcript is not None and (not isinstance(transcript, str) or not transcript.strip()):
-                    errors.append(f"channels[{index}].transcript must be a non-empty string")
-                system_prompt = channel.get("systemPrompt", channel.get("instructions", channel.get("prompt")))
+                if transcript is not None and (
+                    not isinstance(transcript, str) or not transcript.strip()
+                ):
+                    errors.append(
+                        f"channels[{index}].transcript must be a non-empty string"
+                    )
+                system_prompt = channel.get(
+                    "systemPrompt", channel.get("instructions", channel.get("prompt"))
+                )
                 if system_prompt is not None and (
                     not isinstance(system_prompt, str) or not system_prompt.strip()
                 ):
-                    errors.append(f"channels[{index}].systemPrompt must be a non-empty string")
+                    errors.append(
+                        f"channels[{index}].systemPrompt must be a non-empty string"
+                    )
                 knowledge = channel.get("knowledge")
                 if knowledge is not None and not isinstance(knowledge, list):
                     errors.append(f"channels[{index}].knowledge must be an array")
@@ -3157,7 +3646,9 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                     else:
                         for f_index, file_id in enumerate(attachments):
                             if not isinstance(file_id, str) or not file_id.strip():
-                                errors.append(f"channels[{index}].files[{f_index}] must be a non-empty string")
+                                errors.append(
+                                    f"channels[{index}].files[{f_index}] must be a non-empty string"
+                                )
                 images = channel.get("images")
                 if images is not None:
                     if not isinstance(images, list):
@@ -3169,22 +3660,32 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                                     f"channels[{index}].images[{i_index}] must be a non-empty string"
                                 )
                 folder_id = channel.get("folderId", channel.get("folder"))
-                if folder_id is not None and (not isinstance(folder_id, str) or not folder_id.strip()):
-                    errors.append(f"channels[{index}].folderId must be a non-empty string")
+                if folder_id is not None and (
+                    not isinstance(folder_id, str) or not folder_id.strip()
+                ):
+                    errors.append(
+                        f"channels[{index}].folderId must be a non-empty string"
+                    )
                 if messages is not None:
                     if not isinstance(messages, list):
                         errors.append(f"channels[{index}].messages must be an array")
                     else:
                         for m_index, msg in enumerate(messages):
                             if not isinstance(msg, dict):
-                                errors.append(f"channels[{index}].messages[{m_index}] must be an object")
+                                errors.append(
+                                    f"channels[{index}].messages[{m_index}] must be an object"
+                                )
                                 continue
                             role = msg.get("role")
                             content = msg.get("content")
                             if not isinstance(role, str) or not role.strip():
-                                errors.append(f"channels[{index}].messages[{m_index}].role must be a non-empty string")
+                                errors.append(
+                                    f"channels[{index}].messages[{m_index}].role must be a non-empty string"
+                                )
                             if not isinstance(content, str) or not content.strip():
-                                errors.append(f"channels[{index}].messages[{m_index}].content must be a non-empty string")
+                                errors.append(
+                                    f"channels[{index}].messages[{m_index}].content must be a non-empty string"
+                                )
     agents = settings.get("agents")
     if agents is not None:
         if not isinstance(agents, list):
@@ -3198,7 +3699,9 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 agent_id = agent.get("id")
                 name = agent.get("name")
                 base_model = agent.get("baseModel", agent.get("model"))
-                system_prompt = agent.get("systemPrompt", agent.get("instructions", agent.get("prompt")))
+                system_prompt = agent.get(
+                    "systemPrompt", agent.get("instructions", agent.get("prompt"))
+                )
                 if not isinstance(agent_id, str) or not agent_id.strip():
                     errors.append(f"agents[{index}].id must be a non-empty string")
                 elif agent_id in seen_agents:
@@ -3208,11 +3711,15 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 if not isinstance(name, str) or not name.strip():
                     errors.append(f"agents[{index}].name must be a non-empty string")
                 if not isinstance(base_model, str) or not base_model.strip():
-                    errors.append(f"agents[{index}].baseModel must be a non-empty string")
+                    errors.append(
+                        f"agents[{index}].baseModel must be a non-empty string"
+                    )
                 if system_prompt is not None and (
                     not isinstance(system_prompt, str) or not system_prompt.strip()
                 ):
-                    errors.append(f"agents[{index}].systemPrompt must be a non-empty string")
+                    errors.append(
+                        f"agents[{index}].systemPrompt must be a non-empty string"
+                    )
                 for key in ("tags", "tools", "knowledge", "skills"):
                     value = agent.get(key)
                     if value is not None and not isinstance(value, list):
@@ -3224,15 +3731,25 @@ def validate_settings(settings: dict[str, Any]) -> list[str]:
                 if visibility is not None and (
                     not isinstance(visibility, str) or not visibility.strip()
                 ):
-                    errors.append(f"agents[{index}].visibility must be a non-empty string")
+                    errors.append(
+                        f"agents[{index}].visibility must be a non-empty string"
+                    )
                 folder_id = agent.get("folderId", agent.get("folder"))
-                if folder_id is not None and (not isinstance(folder_id, str) or not folder_id.strip()):
-                    errors.append(f"agents[{index}].folderId must be a non-empty string")
+                if folder_id is not None and (
+                    not isinstance(folder_id, str) or not folder_id.strip()
+                ):
+                    errors.append(
+                        f"agents[{index}].folderId must be a non-empty string"
+                    )
                 avatar = agent.get("avatar")
-                if avatar is not None and (not isinstance(avatar, str) or not avatar.strip()):
+                if avatar is not None and (
+                    not isinstance(avatar, str) or not avatar.strip()
+                ):
                     errors.append(f"agents[{index}].avatar must be a non-empty string")
                 voice = agent.get("voice")
-                if voice is not None and (not isinstance(voice, str) or not voice.strip()):
+                if voice is not None and (
+                    not isinstance(voice, str) or not voice.strip()
+                ):
                     errors.append(f"agents[{index}].voice must be a non-empty string")
     return errors
 
@@ -3451,7 +3968,9 @@ def command_snapshot(args: argparse.Namespace) -> int:
             json.dump(bundle, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported snapshot: {output}")
         return 0
 
@@ -3504,7 +4023,10 @@ def command_snapshot(args: argparse.Namespace) -> int:
                 json.dump(bundle, sys.stdout, indent=2, ensure_ascii=False)
                 print()
                 return 0
-            snapshot_path.write_text(json.dumps(bundle, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            snapshot_path.write_text(
+                json.dumps(bundle, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
             print(f"Synced snapshot: {snapshot_path}")
             print("Direction: push")
             return 0
@@ -3628,7 +4150,11 @@ def command_providers(args: argparse.Namespace) -> int:
                 added_for_provider = False
                 for config in configs:
                     model_id = str(config.get("id", "")).strip()
-                    if not model_id or model_id in retained_ids or model_id in seen_keys:
+                    if (
+                        not model_id
+                        or model_id in retained_ids
+                        or model_id in seen_keys
+                    ):
                         continue
                     new_configs.append(config)
                     seen_keys.add(model_id)
@@ -3640,7 +4166,10 @@ def command_providers(args: argparse.Namespace) -> int:
 
             errors = validate_settings(settings)
             if errors:
-                die("generated configuration failed validation:\n- " + "\n- ".join(errors))
+                die(
+                    "generated configuration failed validation:\n- "
+                    + "\n- ".join(errors)
+                )
 
             if args.dry_run:
                 json.dump(settings, sys.stdout, indent=2, ensure_ascii=False)
@@ -3773,7 +4302,9 @@ def _load_prompt_templates_source(source: pathlib.Path) -> list[dict[str, Any]]:
         if isinstance(payload, dict):
             payload = payload.get("promptTemplates", payload.get("templates", []))
         if not isinstance(payload, list):
-            die("prompt template JSON must be an array or an object with promptTemplates")
+            die(
+                "prompt template JSON must be an array or an object with promptTemplates"
+            )
         templates = []
         for item in payload:
             if not isinstance(item, dict):
@@ -3794,7 +4325,13 @@ def _load_prompt_templates_source(source: pathlib.Path) -> list[dict[str, Any]]:
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -3804,7 +4341,9 @@ def _load_prompt_templates_source(source: pathlib.Path) -> list[dict[str, Any]]:
     return [_prompt_template_from_markdown(source)]
 
 
-def _find_prompt_template(templates: list[dict[str, Any]], template_id: str) -> dict[str, Any] | None:
+def _find_prompt_template(
+    templates: list[dict[str, Any]], template_id: str
+) -> dict[str, Any] | None:
     for template in templates:
         if str(template.get("id")) == template_id:
             return template
@@ -3830,19 +4369,27 @@ def render_prompt_md(template: dict[str, Any]) -> str:
 
 
 def render_prompt_html(template: dict[str, Any]) -> str:
-    title = html_escape(str(template.get("name") or template.get("id") or "Prompt Template"))
+    title = html_escape(
+        str(template.get("name") or template.get("id") or "Prompt Template")
+    )
     template_id = html_escape(str(template.get("id") or "prompt"))
     content = html_escape(str(template.get("content") or ""))
     meta_parts: list[str] = []
     description = template.get("description")
     if isinstance(description, str) and description.strip():
-        meta_parts.append(f"<p class=\"meta\">Description: {html_escape(description.strip())}</p>")
+        meta_parts.append(
+            f'<p class="meta">Description: {html_escape(description.strip())}</p>'
+        )
     tags = template.get("tags")
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            meta_parts.append("<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>")
-    body_html = f"<pre class=\"prompt-body\">{content}</pre>" if content else "<pre class=\"prompt-body\"></pre>"
+            meta_parts.append('<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>")
+    body_html = (
+        f'<pre class="prompt-body">{content}</pre>'
+        if content
+        else '<pre class="prompt-body"></pre>'
+    )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -3862,7 +4409,7 @@ def render_prompt_html(template: dict[str, Any]) -> str:
   <article class=\"card\" data-prompt-id=\"{template_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">Prompt ID: {template_id}</p>
-    {''.join(meta_parts)}
+    {"".join(meta_parts)}
     {body_html}
   </article>
 </body>
@@ -3902,8 +4449,16 @@ def command_prompts(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "NAME", "TAGS"))
         print("-" * 80)
         for item in templates:
-            tags = ", ".join(item.get("tags", [])) if isinstance(item.get("tags"), list) else ""
-            print(fmt.format(item.get("id", ""), str(item.get("name", ""))[:28], tags[:18]))
+            tags = (
+                ", ".join(item.get("tags", []))
+                if isinstance(item.get("tags"), list)
+                else ""
+            )
+            print(
+                fmt.format(
+                    item.get("id", ""), str(item.get("name", ""))[:28], tags[:18]
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -3933,7 +4488,9 @@ def command_prompts(args: argparse.Namespace) -> int:
         existing = {str(t.get("id")): t for t in templates if isinstance(t, dict)}
         for item in imported:
             existing[str(item.get("id"))] = item
-        templates[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        templates[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"promptTemplates": templates}
@@ -3941,7 +4498,9 @@ def command_prompts(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported prompt templates: {output}")
         return 0
     elif args.action == "share":
@@ -3980,7 +4539,9 @@ def command_prompts(args: argparse.Namespace) -> int:
         templates.append(clone)
         templates.sort(key=lambda x: str(x.get("id", "")).lower())
         if args.dry_run:
-            json.dump({"promptTemplate": clone}, sys.stdout, indent=2, ensure_ascii=False)
+            json.dump(
+                {"promptTemplate": clone}, sys.stdout, indent=2, ensure_ascii=False
+            )
             print()
             return 0
         saved_backup = backup(path)
@@ -4058,14 +4619,20 @@ def render_skill_html(skill: dict[str, Any]) -> str:
     description = skill.get("description")
     description_html = ""
     if isinstance(description, str) and description.strip():
-        description_html = f"<p class=\"meta\">Description: {html_escape(description.strip())}</p>"
+        description_html = (
+            f'<p class="meta">Description: {html_escape(description.strip())}</p>'
+        )
     tags = skill.get("tags")
     tag_html = ""
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            tag_html = "<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>"
-    body_html = f"<pre class=\"skill-body\">{content}</pre>" if content else "<pre class=\"skill-body\"></pre>"
+            tag_html = '<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>"
+    body_html = (
+        f'<pre class="skill-body">{content}</pre>'
+        if content
+        else '<pre class="skill-body"></pre>'
+    )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -4127,7 +4694,13 @@ def _load_skill_source(source: pathlib.Path) -> list[dict[str, Any]]:
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -4178,8 +4751,16 @@ def command_skills(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "NAME", "TAGS"))
         print("-" * 80)
         for item in skills:
-            tags = ", ".join(item.get("tags", [])) if isinstance(item.get("tags"), list) else ""
-            print(fmt.format(str(item.get("id", "")), str(item.get("name", ""))[:28], tags[:18]))
+            tags = (
+                ", ".join(item.get("tags", []))
+                if isinstance(item.get("tags"), list)
+                else ""
+            )
+            print(
+                fmt.format(
+                    str(item.get("id", "")), str(item.get("name", ""))[:28], tags[:18]
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -4217,10 +4798,15 @@ def command_skills(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "skill"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        skills[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        skills[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"skills": skills}
@@ -4228,7 +4814,9 @@ def command_skills(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported skills: {output}")
         return 0
     elif args.action == "share":
@@ -4317,7 +4905,9 @@ def _plugin_from_markdown(path: pathlib.Path) -> dict[str, Any]:
     return {"id": plugin_id, "name": name, "content": text}
 
 
-def _find_plugin(plugins: list[dict[str, Any]], plugin_id: str) -> dict[str, Any] | None:
+def _find_plugin(
+    plugins: list[dict[str, Any]], plugin_id: str
+) -> dict[str, Any] | None:
     for plugin in plugins:
         if str(plugin.get("id")) == plugin_id:
             return plugin
@@ -4365,7 +4955,9 @@ def render_plugin_html(plugin: dict[str, Any]) -> str:
     for key, label in (("description", "Description"), ("url", "URL")):
         value = plugin.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<p class=\"meta\">{label}: {html_escape(value.strip())}</p>")
+            meta_parts.append(
+                f'<p class="meta">{label}: {html_escape(value.strip())}</p>'
+            )
     for key, label in (
         ("tools", "Tools"),
         ("knowledge", "Knowledge"),
@@ -4374,24 +4966,30 @@ def render_plugin_html(plugin: dict[str, Any]) -> str:
     ):
         values = plugin.get(key)
         if isinstance(values, list):
-            cleaned = [html_escape(str(value)) for value in values if str(value).strip()]
+            cleaned = [
+                html_escape(str(value)) for value in values if str(value).strip()
+            ]
             if cleaned:
-                meta_parts.append(f"<p class=\"meta\">{label}: " + ", ".join(cleaned) + "</p>")
+                meta_parts.append(
+                    f'<p class="meta">{label}: ' + ", ".join(cleaned) + "</p>"
+                )
     tags = plugin.get("tags")
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            meta_parts.append("<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>")
+            meta_parts.append('<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>")
     if plugin.get("enabled") is not None:
         meta_parts.append(
-            f"<p class=\"meta\">Enabled: {html_escape(str(bool(plugin['enabled'])))}</p>"
+            f'<p class="meta">Enabled: {html_escape(str(bool(plugin["enabled"])))}</p>'
         )
     if plugin.get("archived") is not None:
         meta_parts.append(
-            f"<p class=\"meta\">Archived: {html_escape(str(bool(plugin['archived'])))}</p>"
+            f'<p class="meta">Archived: {html_escape(str(bool(plugin["archived"])))}</p>'
         )
     body_html = (
-        f"<pre class=\"plugin-body\">{content}</pre>" if content else "<pre class=\"plugin-body\"></pre>"
+        f'<pre class="plugin-body">{content}</pre>'
+        if content
+        else '<pre class="plugin-body"></pre>'
     )
     return f"""<!doctype html>
 <html lang=\"en\">
@@ -4412,7 +5010,7 @@ def render_plugin_html(plugin: dict[str, Any]) -> str:
   <article class=\"card\" data-plugin-id=\"{plugin_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">Plugin ID: {plugin_id}</p>
-    {''.join(meta_parts)}
+    {"".join(meta_parts)}
     {body_html}
   </article>
 </body>
@@ -4453,7 +5051,13 @@ def _load_plugin_source(source: pathlib.Path) -> list[dict[str, Any]]:
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -4505,8 +5109,16 @@ def command_plugins(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "NAME", "TAGS"))
         print("-" * 80)
         for item in plugins:
-            tags = ", ".join(item.get("tags", [])) if isinstance(item.get("tags"), list) else ""
-            print(fmt.format(str(item.get("id", "")), str(item.get("name", ""))[:28], tags[:18]))
+            tags = (
+                ", ".join(item.get("tags", []))
+                if isinstance(item.get("tags"), list)
+                else ""
+            )
+            print(
+                fmt.format(
+                    str(item.get("id", "")), str(item.get("name", ""))[:28], tags[:18]
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -4554,10 +5166,15 @@ def command_plugins(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "plugin"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        plugins[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        plugins[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"plugins": plugins}
@@ -4565,7 +5182,9 @@ def command_plugins(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported plugins: {output}")
         return 0
     elif args.action == "share":
@@ -4655,7 +5274,9 @@ def _pipeline_from_markdown(path: pathlib.Path) -> dict[str, Any]:
     return _plugin_from_markdown(path)
 
 
-def _find_pipeline(pipelines: list[dict[str, Any]], pipeline_id: str) -> dict[str, Any] | None:
+def _find_pipeline(
+    pipelines: list[dict[str, Any]], pipeline_id: str
+) -> dict[str, Any] | None:
     return _find_plugin(pipelines, pipeline_id)
 
 
@@ -4700,7 +5321,13 @@ def _load_pipeline_source(source: pathlib.Path) -> list[dict[str, Any]]:
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -4753,8 +5380,16 @@ def command_pipelines(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "NAME", "TAGS"))
         print("-" * 80)
         for item in pipelines:
-            tags = ", ".join(item.get("tags", [])) if isinstance(item.get("tags"), list) else ""
-            print(fmt.format(str(item.get("id", "")), str(item.get("name", ""))[:28], tags[:18]))
+            tags = (
+                ", ".join(item.get("tags", []))
+                if isinstance(item.get("tags"), list)
+                else ""
+            )
+            print(
+                fmt.format(
+                    str(item.get("id", "")), str(item.get("name", ""))[:28], tags[:18]
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -4802,10 +5437,15 @@ def command_pipelines(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "pipeline"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        pipelines[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        pipelines[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"pipelines": pipelines}
@@ -4813,7 +5453,9 @@ def command_pipelines(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported pipelines: {output}")
         return 0
     elif args.action == "share":
@@ -4907,7 +5549,9 @@ def normalize_actions(settings: dict[str, Any]) -> list[dict[str, Any]]:
     return normalize_pipelines_registry(settings, "actions")
 
 
-def normalize_pipelines_registry(settings: dict[str, Any], key: str) -> list[dict[str, Any]]:
+def normalize_pipelines_registry(
+    settings: dict[str, Any], key: str
+) -> list[dict[str, Any]]:
     registry = settings.get(key)
     if registry is None:
         settings[key] = []
@@ -4931,16 +5575,23 @@ def normalize_pipelines_registry(settings: dict[str, Any], key: str) -> list[dic
                 "name": str(name).strip(),
                 "content": content,
             }
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized_item["description"] = str(item["description"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized_item["tags"] = tags
             for extra_key in ("tools", "knowledge", "skills", "events"):
                 values = item.get(extra_key)
                 if isinstance(values, list):
-                    cleaned = [str(entry).strip() for entry in values if str(entry).strip()]
+                    cleaned = [
+                        str(entry).strip() for entry in values if str(entry).strip()
+                    ]
                     if cleaned:
                         normalized_item[extra_key] = cleaned
             if isinstance(item.get("url"), str) and str(item["url"]).strip():
@@ -4957,7 +5608,11 @@ def normalize_pipelines_registry(settings: dict[str, Any], key: str) -> list[dic
         for item_key, value in registry.items():
             if isinstance(value, str):
                 normalized.append(
-                    {"id": str(item_key).strip(), "name": str(item_key).strip(), "content": value}
+                    {
+                        "id": str(item_key).strip(),
+                        "name": str(item_key).strip(),
+                        "content": value,
+                    }
                 )
                 continue
             if isinstance(value, dict):
@@ -4966,7 +5621,10 @@ def normalize_pipelines_registry(settings: dict[str, Any], key: str) -> list[dic
                 item.setdefault("name", str(item_key).strip())
                 if isinstance(item.get("content"), str) and item["content"].strip():
                     normalized.append(item)
-                elif isinstance(item.get("instructions"), str) and item["instructions"].strip():
+                elif (
+                    isinstance(item.get("instructions"), str)
+                    and item["instructions"].strip()
+                ):
                     item["content"] = item.pop("instructions")
                     normalized.append(item)
         settings[key] = normalized
@@ -5001,7 +5659,12 @@ def _render_manifest_md(item: dict[str, Any], title_label: str) -> str:
         value = item.get(key)
         if isinstance(value, str) and value.strip():
             lines.append(f"- {label}: {value.strip()}")
-    for key, label in (("tools", "Tools"), ("knowledge", "Knowledge"), ("skills", "Skills"), ("events", "Events")):
+    for key, label in (
+        ("tools", "Tools"),
+        ("knowledge", "Knowledge"),
+        ("skills", "Skills"),
+        ("events", "Events"),
+    ):
         values = item.get(key)
         if isinstance(values, list) and values:
             joined = ", ".join(str(value) for value in values if str(value).strip())
@@ -5022,7 +5685,9 @@ def _render_manifest_md(item: dict[str, Any], title_label: str) -> str:
     return "\n".join(lines).strip() + "\n"
 
 
-def _render_manifest_html(item: dict[str, Any], title_label: str, data_attr: str) -> str:
+def _render_manifest_html(
+    item: dict[str, Any], title_label: str, data_attr: str
+) -> str:
     title = html_escape(str(item.get("name") or item.get("id") or title_label))
     item_id = html_escape(str(item.get("id") or title_label.lower()))
     content = html_escape(str(item.get("content") or ""))
@@ -5030,23 +5695,42 @@ def _render_manifest_html(item: dict[str, Any], title_label: str, data_attr: str
     for key, label in (("description", "Description"), ("url", "URL")):
         value = item.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<p class=\"meta\">{label}: {html_escape(value.strip())}</p>")
-    for key, label in (("tools", "Tools"), ("knowledge", "Knowledge"), ("skills", "Skills"), ("events", "Events")):
+            meta_parts.append(
+                f'<p class="meta">{label}: {html_escape(value.strip())}</p>'
+            )
+    for key, label in (
+        ("tools", "Tools"),
+        ("knowledge", "Knowledge"),
+        ("skills", "Skills"),
+        ("events", "Events"),
+    ):
         values = item.get(key)
         if isinstance(values, list):
-            cleaned = [html_escape(str(value)) for value in values if str(value).strip()]
+            cleaned = [
+                html_escape(str(value)) for value in values if str(value).strip()
+            ]
             if cleaned:
-                meta_parts.append(f"<p class=\"meta\">{label}: " + ", ".join(cleaned) + "</p>")
+                meta_parts.append(
+                    f'<p class="meta">{label}: ' + ", ".join(cleaned) + "</p>"
+                )
     tags = item.get("tags")
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            meta_parts.append("<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>")
+            meta_parts.append('<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>")
     if item.get("enabled") is not None:
-        meta_parts.append(f"<p class=\"meta\">Enabled: {html_escape(str(bool(item['enabled'])) )}</p>")
+        meta_parts.append(
+            f'<p class="meta">Enabled: {html_escape(str(bool(item["enabled"])))}</p>'
+        )
     if item.get("archived") is not None:
-        meta_parts.append(f"<p class=\"meta\">Archived: {html_escape(str(bool(item['archived'])) )}</p>")
-    body_html = f"<pre class=\"manifest-body\">{content}</pre>" if content else "<pre class=\"manifest-body\"></pre>"
+        meta_parts.append(
+            f'<p class="meta">Archived: {html_escape(str(bool(item["archived"])))}</p>'
+        )
+    body_html = (
+        f'<pre class="manifest-body">{content}</pre>'
+        if content
+        else '<pre class="manifest-body"></pre>'
+    )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -5066,7 +5750,7 @@ def _render_manifest_html(item: dict[str, Any], title_label: str, data_attr: str
   <article class=\"card\" data-{data_attr}=\"{item_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">{title_label} ID: {item_id}</p>
-    {''.join(meta_parts)}
+    {"".join(meta_parts)}
     {body_html}
   </article>
 </body>
@@ -5107,7 +5791,13 @@ def _load_manifest_source(source: pathlib.Path, key: str) -> list[dict[str, Any]
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -5166,8 +5856,16 @@ def _command_manifest_registry(
         print(fmt.format("ID", "NAME", "TAGS"))
         print("-" * 80)
         for item in registry:
-            tags = ", ".join(item.get("tags", [])) if isinstance(item.get("tags"), list) else ""
-            print(fmt.format(str(item.get("id", "")), str(item.get("name", ""))[:28], tags[:18]))
+            tags = (
+                ", ".join(item.get("tags", []))
+                if isinstance(item.get("tags"), list)
+                else ""
+            )
+            print(
+                fmt.format(
+                    str(item.get("id", "")), str(item.get("name", ""))[:28], tags[:18]
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -5215,10 +5913,15 @@ def _command_manifest_registry(
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or registry_key[:-1]))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        registry[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        registry[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {registry_key: registry}
@@ -5226,7 +5929,9 @@ def _command_manifest_registry(
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported {registry_key}: {output}")
         return 0
     elif args.action == "share":
@@ -5279,7 +5984,9 @@ def _command_manifest_registry(
         registry.append(clone)
         registry.sort(key=lambda x: str(x.get("id", "")).lower())
         if args.dry_run:
-            json.dump({registry_key[:-1]: clone}, sys.stdout, indent=2, ensure_ascii=False)
+            json.dump(
+                {registry_key[:-1]: clone}, sys.stdout, indent=2, ensure_ascii=False
+            )
             print()
             return 0
         saved_backup = backup(path)
@@ -5353,7 +6060,9 @@ def normalize_automations(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 if isinstance(value, str) and value.strip():
                     normalized_item[key] = value.strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized_item["tags"] = tags
             if item.get("enabled") is not None:
@@ -5408,7 +6117,9 @@ def _automation_from_markdown(path: pathlib.Path) -> dict[str, Any]:
     }
 
 
-def _find_automation(automations: list[dict[str, Any]], automation_id: str) -> dict[str, Any] | None:
+def _find_automation(
+    automations: list[dict[str, Any]], automation_id: str
+) -> dict[str, Any] | None:
     for item in automations:
         if str(item.get("id")) == automation_id:
             return item
@@ -5462,7 +6173,13 @@ def _load_automation_source(source: pathlib.Path) -> list[dict[str, Any]]:
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -5485,7 +6202,13 @@ def _load_automation_source(source: pathlib.Path) -> list[dict[str, Any]]:
 def _render_automation_md(item: dict[str, Any]) -> str:
     title = str(item.get("name") or item.get("id") or "Automation").strip()
     lines = [f"# {title}", ""]
-    for key, label in (("id", "ID"), ("schedule", "Schedule"), ("timezone", "Timezone"), ("model", "Model"), ("description", "Description")):
+    for key, label in (
+        ("id", "ID"),
+        ("schedule", "Schedule"),
+        ("timezone", "Timezone"),
+        ("model", "Model"),
+        ("description", "Description"),
+    ):
         value = item.get(key)
         if isinstance(value, str) and value.strip():
             lines.append(f"- {label}: {value.strip()}")
@@ -5509,20 +6232,35 @@ def _render_automation_html(item: dict[str, Any]) -> str:
     item_id = html_escape(str(item.get("id") or "automation"))
     prompt = html_escape(str(item.get("prompt") or item.get("content") or ""))
     meta_parts: list[str] = []
-    for key, label in (("schedule", "Schedule"), ("timezone", "Timezone"), ("model", "Model"), ("description", "Description")):
+    for key, label in (
+        ("schedule", "Schedule"),
+        ("timezone", "Timezone"),
+        ("model", "Model"),
+        ("description", "Description"),
+    ):
         value = item.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<p class=\"meta\">{label}: {html_escape(value.strip())}</p>")
+            meta_parts.append(
+                f'<p class="meta">{label}: {html_escape(value.strip())}</p>'
+            )
     tags = item.get("tags")
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            meta_parts.append("<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>")
+            meta_parts.append('<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>")
     if item.get("enabled") is not None:
-        meta_parts.append(f"<p class=\"meta\">Enabled: {html_escape(str(bool(item['enabled'])))}</p>")
+        meta_parts.append(
+            f'<p class="meta">Enabled: {html_escape(str(bool(item["enabled"])))}</p>'
+        )
     if item.get("archived") is not None:
-        meta_parts.append(f"<p class=\"meta\">Archived: {html_escape(str(bool(item['archived'])))}</p>")
-    body_html = f"<pre class=\"automation-body\">{prompt}</pre>" if prompt else "<pre class=\"automation-body\"></pre>"
+        meta_parts.append(
+            f'<p class="meta">Archived: {html_escape(str(bool(item["archived"])))}</p>'
+        )
+    body_html = (
+        f'<pre class="automation-body">{prompt}</pre>'
+        if prompt
+        else '<pre class="automation-body"></pre>'
+    )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -5542,7 +6280,7 @@ def _render_automation_html(item: dict[str, Any]) -> str:
   <article class=\"card\" data-automation-id=\"{item_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">Automation ID: {item_id}</p>
-    {''.join(meta_parts)}
+    {"".join(meta_parts)}
     {body_html}
   </article>
 </body>
@@ -5596,7 +6334,13 @@ def command_automations(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "NAME", "SCHEDULE"))
         print("-" * 80)
         for item in automations:
-            print(fmt.format(str(item.get("id", "")), str(item.get("name", ""))[:28], str(item.get("schedule", ""))[:24]))
+            print(
+                fmt.format(
+                    str(item.get("id", "")),
+                    str(item.get("name", ""))[:28],
+                    str(item.get("schedule", ""))[:24],
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -5639,10 +6383,15 @@ def command_automations(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "automation"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        automations[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        automations[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"automations": automations}
@@ -5650,7 +6399,9 @@ def command_automations(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported automations: {output}")
         return 0
     elif args.action == "share":
@@ -5759,7 +6510,9 @@ def _load_tool_servers_source(source: pathlib.Path) -> list[dict[str, Any]]:
     die("tool server JSON must be an array or an object with toolServers/servers")
 
 
-def _find_tool_server(servers: list[dict[str, Any]], tool_id: str) -> dict[str, Any] | None:
+def _find_tool_server(
+    servers: list[dict[str, Any]], tool_id: str
+) -> dict[str, Any] | None:
     for server in servers:
         if str(server.get("id")) == tool_id:
             return server
@@ -5769,7 +6522,12 @@ def _find_tool_server(servers: list[dict[str, Any]], tool_id: str) -> dict[str, 
 def render_tool_server_md(server: dict[str, Any]) -> str:
     title = str(server.get("name") or server.get("id") or "Tool Server").strip()
     lines = [f"# {title}", ""]
-    for key, label in (("id", "ID"), ("type", "Type"), ("description", "Description"), ("auth", "Auth")):
+    for key, label in (
+        ("id", "ID"),
+        ("type", "Type"),
+        ("description", "Description"),
+        ("auth", "Auth"),
+    ):
         value = server.get(key)
         if isinstance(value, str) and value.strip():
             lines.append(f"- {label}: {value.strip()}")
@@ -5791,19 +6549,27 @@ def render_tool_server_html(server: dict[str, Any]) -> str:
     server_id = html_escape(str(server.get("id") or "tool"))
     endpoint = str(server.get("endpoint", server.get("url")) or "").strip()
     meta_parts: list[str] = []
-    for key, label in (("type", "Type"), ("description", "Description"), ("auth", "Auth")):
+    for key, label in (
+        ("type", "Type"),
+        ("description", "Description"),
+        ("auth", "Auth"),
+    ):
         value = server.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<p class=\"meta\">{label}: {html_escape(value.strip())}</p>")
+            meta_parts.append(
+                f'<p class="meta">{label}: {html_escape(value.strip())}</p>'
+            )
     if endpoint:
-        meta_parts.append(f"<p class=\"meta\">Endpoint: {html_escape(endpoint)}</p>")
+        meta_parts.append(f'<p class="meta">Endpoint: {html_escape(endpoint)}</p>')
     tags = server.get("tags")
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            meta_parts.append("<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>")
+            meta_parts.append('<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>")
     if server.get("enabled") is not None:
-        meta_parts.append(f"<p class=\"meta\">Enabled: {html_escape(str(bool(server['enabled'])))}</p>")
+        meta_parts.append(
+            f'<p class="meta">Enabled: {html_escape(str(bool(server["enabled"])))}</p>'
+        )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -5823,7 +6589,7 @@ def render_tool_server_html(server: dict[str, Any]) -> str:
   <article class=\"card\" data-tool-server-id=\"{server_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">Tool Server ID: {server_id}</p>
-    {''.join(meta_parts)}
+    {"".join(meta_parts)}
   </article>
 </body>
 </html>
@@ -5909,10 +6675,15 @@ def command_tools(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "tool"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        servers[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        servers[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"toolServers": servers}
@@ -5920,7 +6691,9 @@ def command_tools(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported tool servers: {output}")
         return 0
     elif args.action == "share":
@@ -6024,7 +6797,9 @@ def _load_knowledge_source(source: pathlib.Path) -> list[dict[str, Any]]:
 
 def _normalize_knowledge_source_payload(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, dict):
-        payload = payload.get("knowledgeBases", payload.get("bases", payload.get("items", [])))
+        payload = payload.get(
+            "knowledgeBases", payload.get("bases", payload.get("items", []))
+        )
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     return []
@@ -6034,7 +6809,9 @@ def _normalize_knowledge_index_payload(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, dict):
         if "documents" in payload:
             return [payload]
-        payload = payload.get("knowledgeIndexes", payload.get("indexes", payload.get("items", [])))
+        payload = payload.get(
+            "knowledgeIndexes", payload.get("indexes", payload.get("items", []))
+        )
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     return []
@@ -6119,7 +6896,10 @@ def command_kb(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "knowledge"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
         bases[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
@@ -6130,7 +6910,9 @@ def command_kb(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported knowledge bases: {output}")
         return 0
     elif args.action == "clone":
@@ -6163,7 +6945,9 @@ def command_kb(args: argparse.Namespace) -> int:
         bases.append(clone)
         bases.sort(key=lambda x: str(x.get("id", "")).lower())
         if args.dry_run:
-            json.dump({"knowledgeBase": clone}, sys.stdout, indent=2, ensure_ascii=False)
+            json.dump(
+                {"knowledgeBase": clone}, sys.stdout, indent=2, ensure_ascii=False
+            )
             print()
             return 0
         saved_backup = backup(path)
@@ -6175,7 +6959,9 @@ def command_kb(args: argparse.Namespace) -> int:
     elif args.action == "ingest":
         source_dir = pathlib.Path(args.source_dir).expanduser()
         base_id = args.base_id or slugify(source_dir.name)
-        index = build_knowledge_index(base_id, source_dir, args.chunk_size, args.overlap)
+        index = build_knowledge_index(
+            base_id, source_dir, args.chunk_size, args.overlap
+        )
         indexes = settings.setdefault("knowledgeIndexes", [])
         if not isinstance(indexes, list):
             die("knowledgeIndexes must be an array")
@@ -6189,7 +6975,8 @@ def command_kb(args: argparse.Namespace) -> int:
                 "id": base_id,
                 "name": args.name or source_dir.name,
                 "sourceDir": str(source_dir),
-                "description": args.description or f"Indexed knowledge base from {source_dir}",
+                "description": args.description
+                or f"Indexed knowledge base from {source_dir}",
                 "enabled": True,
                 "sources": [str(source_dir)],
             }
@@ -6213,15 +7000,22 @@ def command_kb(args: argparse.Namespace) -> int:
             return 0
         output = pathlib.Path(args.output).expanduser()
         if output.suffix.lower() == ".json":
-            output.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            output.write_text(
+                json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
             print(f"Exported knowledge index: {output}")
         else:
             output.mkdir(parents=True, exist_ok=True)
             for doc in index["documents"]:
                 doc_path = output / f"{doc['id']}.json"
-                doc_path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                doc_path.write_text(
+                    json.dumps(doc, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
             manifest = output / "manifest.json"
-            manifest.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
             print(f"Exported knowledge index: {manifest}")
         saved_backup = backup(path)
         atomic_write_json(path, settings)
@@ -6235,7 +7029,14 @@ def command_kb(args: argparse.Namespace) -> int:
         base_id = args.base_id
         if not base_id:
             die("--base-id is required for kb refresh")
-        base = next((item for item in bases if isinstance(item, dict) and str(item.get("id")) == base_id), None)
+        base = next(
+            (
+                item
+                for item in bases
+                if isinstance(item, dict) and str(item.get("id")) == base_id
+            ),
+            None,
+        )
         if base is None:
             die(f"knowledge base '{base_id}' not found")
         try:
@@ -6276,15 +7077,22 @@ def command_kb(args: argparse.Namespace) -> int:
             return 0
         output = pathlib.Path(args.output).expanduser()
         if output.suffix.lower() == ".json":
-            output.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            output.write_text(
+                json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
             print(f"Exported knowledge index: {output}")
         else:
             output.mkdir(parents=True, exist_ok=True)
             for doc in index["documents"]:
                 doc_path = output / f"{doc['id']}.json"
-                doc_path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                doc_path.write_text(
+                    json.dumps(doc, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
             manifest = output / "manifest.json"
-            manifest.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
             print(f"Exported knowledge index: {manifest}")
         saved_backup = backup(path)
         atomic_write_json(path, settings)
@@ -6299,9 +7107,7 @@ def command_kb(args: argparse.Namespace) -> int:
             item
             for item in bases
             if isinstance(item, dict)
-            and (
-                not args.base_id or str(item.get("id")) == args.base_id
-            )
+            and (not args.base_id or str(item.get("id")) == args.base_id)
         ]
         if args.base_id and not selected_bases:
             die(f"knowledge base '{args.base_id}' not found")
@@ -6325,11 +7131,13 @@ def command_kb(args: argparse.Namespace) -> int:
                     base_id,
                     args.chunk_size,
                     args.overlap,
-                args.timeout,
-            )
+                    args.timeout,
+                )
             except ValueError as exc:
                 die(str(exc))
-            indexes[:] = [item for item in indexes if str(item.get("baseId")) != base_id]
+            indexes[:] = [
+                item for item in indexes if str(item.get("baseId")) != base_id
+            ]
             indexes.append(index)
             refreshed_indexes.append(index)
             refreshed_bases.append(refreshed_base)
@@ -6401,7 +7209,12 @@ def command_kb(args: argparse.Namespace) -> int:
         for url in urls:
             try:
                 documents.append(fetch_web_document(url, args.timeout))
-            except (urllib.error.URLError, TimeoutError, ValueError, UnicodeError) as exc:
+            except (
+                urllib.error.URLError,
+                TimeoutError,
+                ValueError,
+                UnicodeError,
+            ) as exc:
                 die(f"unable to fetch {url}: {exc}")
         base_id = args.base_id or slugify(urls[0])
         index = build_knowledge_index_from_documents(
@@ -6424,7 +7237,8 @@ def command_kb(args: argparse.Namespace) -> int:
                 "id": base_id,
                 "name": args.name or documents[0].get("name") or base_id,
                 "sourceDir": ", ".join(urls),
-                "description": args.description or f"Ingested web sources for {base_id}",
+                "description": args.description
+                or f"Ingested web sources for {base_id}",
                 "enabled": True,
                 "sources": urls,
             }
@@ -6448,15 +7262,22 @@ def command_kb(args: argparse.Namespace) -> int:
             return 0
         output = pathlib.Path(args.output).expanduser()
         if output.suffix.lower() == ".json":
-            output.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            output.write_text(
+                json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
             print(f"Exported knowledge index: {output}")
         else:
             output.mkdir(parents=True, exist_ok=True)
             for doc in index["documents"]:
                 doc_path = output / f"{doc['id']}.json"
-                doc_path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                doc_path.write_text(
+                    json.dumps(doc, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8",
+                )
             manifest = output / "manifest.json"
-            manifest.write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            manifest.write_text(
+                json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
             print(f"Exported knowledge index: {manifest}")
         saved_backup = backup(path)
         atomic_write_json(path, settings)
@@ -6614,16 +7435,28 @@ def render_note_html(note: dict[str, Any]) -> str:
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            tag_html = "<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>"
+            tag_html = '<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>"
     attachment_html = ""
     attachments = _note_attachments(note)
     if attachments:
-        attachment_html = "<p class=\"tags\">Attachments: " + ", ".join(html_escape(item) for item in attachments) + "</p>"
+        attachment_html = (
+            '<p class="tags">Attachments: '
+            + ", ".join(html_escape(item) for item in attachments)
+            + "</p>"
+        )
     image_html = ""
     images = _note_images(note)
     if images:
-        image_html = "<p class=\"tags\">Images: " + ", ".join(html_escape(item) for item in images) + "</p>"
-    body_html = f"<pre class=\"note-body\">{body}</pre>" if body else "<pre class=\"note-body\"></pre>"
+        image_html = (
+            '<p class="tags">Images: '
+            + ", ".join(html_escape(item) for item in images)
+            + "</p>"
+        )
+    body_html = (
+        f'<pre class="note-body">{body}</pre>'
+        if body
+        else '<pre class="note-body"></pre>'
+    )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -6657,7 +7490,13 @@ def _load_artifact_source(source: pathlib.Path) -> list[dict[str, Any]]:
     if source.is_dir():
         artifacts: list[dict[str, Any]] = []
         for path in sorted(source.rglob("*")):
-            if path.is_file() and path.suffix.lower() in {".md", ".markdown", ".txt", ".html", ".htm"}:
+            if path.is_file() and path.suffix.lower() in {
+                ".md",
+                ".markdown",
+                ".txt",
+                ".html",
+                ".htm",
+            }:
                 text = path.read_text(encoding="utf-8").strip()
                 if not text:
                     continue
@@ -6692,7 +7531,8 @@ def _load_artifact_source(source: pathlib.Path) -> list[dict[str, Any]]:
                     "content": content,
                     **(
                         {"kind": str(item["kind"]).strip()}
-                        if isinstance(item.get("kind"), str) and str(item.get("kind")).strip()
+                        if isinstance(item.get("kind"), str)
+                        and str(item.get("kind")).strip()
                         else {}
                     ),
                 }
@@ -6702,7 +7542,14 @@ def _load_artifact_source(source: pathlib.Path) -> list[dict[str, Any]]:
     if not text:
         return []
     title = source.stem
-    return [{"id": slugify(source.stem), "title": title, "content": text, "kind": source.suffix.lstrip(".") or "text"}]
+    return [
+        {
+            "id": slugify(source.stem),
+            "title": title,
+            "content": text,
+            "kind": source.suffix.lstrip(".") or "text",
+        }
+    ]
 
 
 def command_notes(args: argparse.Namespace) -> int:
@@ -6743,7 +7590,11 @@ def command_notes(args: argparse.Namespace) -> int:
             state = "pinned" if item.get("pinned") else "active"
             if item.get("archived"):
                 state = "archived"
-            print(fmt.format(str(item.get("id", "")), str(item.get("title", ""))[:28], state))
+            print(
+                fmt.format(
+                    str(item.get("id", "")), str(item.get("title", ""))[:28], state
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -6783,7 +7634,10 @@ def command_notes(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("title") or "note"))
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
         notes[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
@@ -6794,7 +7648,9 @@ def command_notes(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported notes: {output}")
         return 0
     elif args.action == "share":
@@ -6905,7 +7761,9 @@ def _load_memory_source(source: pathlib.Path) -> list[dict[str, Any]]:
                 continue
             memory: dict[str, Any] = {
                 "id": memory_id,
-                "title": str(item.get("title") or item.get("name") or memory_id).strip(),
+                "title": str(
+                    item.get("title") or item.get("name") or memory_id
+                ).strip(),
                 "content": content,
             }
             if isinstance(item.get("scope"), str) and str(item.get("scope")).strip():
@@ -6913,7 +7771,9 @@ def _load_memory_source(source: pathlib.Path) -> list[dict[str, Any]]:
             if isinstance(item.get("source"), str) and str(item.get("source")).strip():
                 memory["source"] = str(item["source"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     memory["tags"] = tags
             memories.append(memory)
@@ -6928,10 +7788,14 @@ def _load_memory_source(source: pathlib.Path) -> list[dict[str, Any]]:
         if heading:
             title = heading
             text = "\n".join(lines[1:]).strip() or text
-    return [{"id": slugify(source.stem), "title": title, "content": text, "scope": "user"}]
+    return [
+        {"id": slugify(source.stem), "title": title, "content": text, "scope": "user"}
+    ]
 
 
-def _find_memory(memories: list[dict[str, Any]], memory_id: str) -> dict[str, Any] | None:
+def _find_memory(
+    memories: list[dict[str, Any]], memory_id: str
+) -> dict[str, Any] | None:
     for memory in memories:
         if str(memory.get("id")) == memory_id:
             return memory
@@ -6964,14 +7828,20 @@ def render_memory_html(memory: dict[str, Any]) -> str:
     for key, label in (("scope", "Scope"), ("source", "Source")):
         value = memory.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<p class=\"meta\">{label}: {html_escape(value.strip())}</p>")
+            meta_parts.append(
+                f'<p class="meta">{label}: {html_escape(value.strip())}</p>'
+            )
     tags = memory.get("tags")
     tag_html = ""
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            tag_html = "<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>"
-    body_html = f"<pre class=\"memory-body\">{content}</pre>" if content else "<pre class=\"memory-body\"></pre>"
+            tag_html = '<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>"
+    body_html = (
+        f'<pre class="memory-body">{content}</pre>'
+        if content
+        else '<pre class="memory-body"></pre>'
+    )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -6991,7 +7861,7 @@ def render_memory_html(memory: dict[str, Any]) -> str:
   <article class=\"card\" data-memory-id=\"{memory_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">Memory ID: {memory_id}</p>
-    {''.join(meta_parts)}
+    {"".join(meta_parts)}
     {tag_html}
     {body_html}
   </article>
@@ -7029,7 +7899,9 @@ def normalize_memories(settings: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(item.get("source"), str) and str(item.get("source")).strip():
                 normalized_item["source"] = str(item["source"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized_item["tags"] = tags
             if item.get("pinned") is not None:
@@ -7044,7 +7916,11 @@ def normalize_memories(settings: dict[str, Any]) -> list[dict[str, Any]]:
         for key, value in memories.items():
             if isinstance(value, str):
                 normalized.append(
-                    {"id": str(key).strip(), "title": str(key).strip(), "content": value}
+                    {
+                        "id": str(key).strip(),
+                        "title": str(key).strip(),
+                        "content": value,
+                    }
                 )
                 continue
             if isinstance(value, dict):
@@ -7101,7 +7977,13 @@ def command_memories(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "TITLE", "SCOPE"))
         print("-" * 80)
         for item in memories:
-            print(fmt.format(str(item.get("id", "")), str(item.get("title", ""))[:24], str(item.get("scope", "user"))[:12]))
+            print(
+                fmt.format(
+                    str(item.get("id", "")),
+                    str(item.get("title", ""))[:24],
+                    str(item.get("scope", "user"))[:12],
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -7140,10 +8022,15 @@ def command_memories(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("title") or "memory"))
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        memories[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        memories[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"memories": memories}
@@ -7151,7 +8038,9 @@ def command_memories(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported memories: {output}")
         return 0
     elif args.action == "share":
@@ -7264,7 +8153,13 @@ def command_artifacts(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "TITLE", "KIND"))
         print("-" * 80)
         for item in artifacts:
-            print(fmt.format(str(item.get("id", "")), str(item.get("title", ""))[:28], str(item.get("kind", ""))[:12]))
+            print(
+                fmt.format(
+                    str(item.get("id", "")),
+                    str(item.get("title", ""))[:28],
+                    str(item.get("kind", ""))[:12],
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -7298,10 +8193,15 @@ def command_artifacts(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("title") or "artifact"))
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        artifacts[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        artifacts[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"artifacts": artifacts}
@@ -7309,7 +8209,9 @@ def command_artifacts(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported artifacts: {output}")
         return 0
     elif args.action == "share":
@@ -7380,7 +8282,12 @@ def _load_conversation_source(source: pathlib.Path) -> list[dict[str, Any]]:
     if source.is_dir():
         conversations: list[dict[str, Any]] = []
         for path in sorted(source.rglob("*")):
-            if path.is_file() and path.suffix.lower() in {".md", ".markdown", ".txt", ".json"}:
+            if path.is_file() and path.suffix.lower() in {
+                ".md",
+                ".markdown",
+                ".txt",
+                ".json",
+            }:
                 if path.suffix.lower() == ".json":
                     try:
                         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -7460,7 +8367,9 @@ def _conversation_text(conversation: dict[str, Any]) -> str:
     return ""
 
 
-def _find_conversation(conversations: list[dict[str, Any]], convo_id: str) -> dict[str, Any] | None:
+def _find_conversation(
+    conversations: list[dict[str, Any]], convo_id: str
+) -> dict[str, Any] | None:
     for conversation in conversations:
         if str(conversation.get("id")) == convo_id:
             return conversation
@@ -7474,7 +8383,14 @@ def _clone_registry_item(
     new_id: str | None = None,
     new_title: str | None = None,
 ) -> dict[str, Any]:
-    item = next((entry for entry in items if isinstance(entry, dict) and str(entry.get("id")) == item_id), None)
+    item = next(
+        (
+            entry
+            for entry in items
+            if isinstance(entry, dict) and str(entry.get("id")) == item_id
+        ),
+        None,
+    )
     if item is None:
         die(f"item '{item_id}' not found")
     clone = dict(item)
@@ -7513,18 +8429,26 @@ def _load_folder_source(source: pathlib.Path) -> list[dict[str, Any]]:
     die("folder import expects a JSON file or directory")
 
 
-def _find_folder(folders: list[dict[str, Any]], folder_id: str) -> dict[str, Any] | None:
+def _find_folder(
+    folders: list[dict[str, Any]], folder_id: str
+) -> dict[str, Any] | None:
     for folder in folders:
         if str(folder.get("id")) == folder_id:
             return folder
     return None
 
 
-def _apply_folder_defaults(conversation: dict[str, Any], folder: dict[str, Any] | None) -> None:
+def _apply_folder_defaults(
+    conversation: dict[str, Any], folder: dict[str, Any] | None
+) -> None:
     if folder is None:
         return
     system_prompt = folder.get("systemPrompt")
-    if isinstance(system_prompt, str) and system_prompt.strip() and not str(conversation.get("systemPrompt", "")).strip():
+    if (
+        isinstance(system_prompt, str)
+        and system_prompt.strip()
+        and not str(conversation.get("systemPrompt", "")).strip()
+    ):
         conversation["systemPrompt"] = system_prompt.strip()
     knowledge = folder.get("knowledge")
     if isinstance(knowledge, list):
@@ -7550,7 +8474,13 @@ def _conversation_images(conversation: dict[str, Any]) -> list[str]:
 def render_folder_md(folder: dict[str, Any]) -> str:
     title = str(folder.get("name") or folder.get("id") or "Folder").strip()
     lines = [f"# {title}", ""]
-    for key, label in (("id", "ID"), ("parentId", "Parent"), ("systemPrompt", "System Prompt"), ("sourceDir", "Source Dir"), ("description", "Description")):
+    for key, label in (
+        ("id", "ID"),
+        ("parentId", "Parent"),
+        ("systemPrompt", "System Prompt"),
+        ("sourceDir", "Source Dir"),
+        ("description", "Description"),
+    ):
         value = folder.get(key)
         if isinstance(value, str) and value.strip():
             lines.extend([f"- {label}: {value.strip()}"])
@@ -7573,26 +8503,42 @@ def render_folder_html(folder: dict[str, Any]) -> str:
     title = html_escape(str(folder.get("name") or folder.get("id") or "Folder"))
     folder_id = html_escape(str(folder.get("id") or "folder"))
     meta_parts: list[str] = []
-    for key, label in (("parentId", "Parent"), ("sourceDir", "Source Dir"), ("description", "Description")):
+    for key, label in (
+        ("parentId", "Parent"),
+        ("sourceDir", "Source Dir"),
+        ("description", "Description"),
+    ):
         value = folder.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<p class=\"meta\">{label}: {html_escape(value.strip())}</p>")
+            meta_parts.append(
+                f'<p class="meta">{label}: {html_escape(value.strip())}</p>'
+            )
     if folder.get("unreadCount") is not None:
-        meta_parts.append(f"<p class=\"meta\">Unread Count: {html_escape(str(folder['unreadCount']))}</p>")
+        meta_parts.append(
+            f'<p class="meta">Unread Count: {html_escape(str(folder["unreadCount"]))}</p>'
+        )
     if folder.get("pinned") is not None:
-        meta_parts.append(f"<p class=\"meta\">Pinned: {html_escape(str(bool(folder['pinned'])))}</p>")
+        meta_parts.append(
+            f'<p class="meta">Pinned: {html_escape(str(bool(folder["pinned"])))}</p>'
+        )
     if folder.get("archived") is not None:
-        meta_parts.append(f"<p class=\"meta\">Archived: {html_escape(str(bool(folder['archived'])))}</p>")
+        meta_parts.append(
+            f'<p class="meta">Archived: {html_escape(str(bool(folder["archived"])))}</p>'
+        )
     for key, label in (("systemPrompt", "System Prompt"),):
         value = folder.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<pre class=\"system-prompt\">{html_escape(value.strip())}</pre>")
+            meta_parts.append(
+                f'<pre class="system-prompt">{html_escape(value.strip())}</pre>'
+            )
     for key, label in (("knowledge", "Knowledge"), ("tags", "Tags")):
         value = folder.get(key)
         if isinstance(value, list) and value:
-            line = ", ".join(html_escape(str(item)) for item in value if str(item).strip())
+            line = ", ".join(
+                html_escape(str(item)) for item in value if str(item).strip()
+            )
             if line:
-                meta_parts.append(f"<p class=\"tags\">{label}: {line}</p>")
+                meta_parts.append(f'<p class="tags">{label}: {line}</p>')
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -7613,7 +8559,7 @@ def render_folder_html(folder: dict[str, Any]) -> str:
   <article class=\"card\" data-folder-id=\"{folder_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">Folder ID: {folder_id}</p>
-    {''.join(meta_parts)}
+    {"".join(meta_parts)}
   </article>
 </body>
 </html>
@@ -7621,7 +8567,9 @@ def render_folder_html(folder: dict[str, Any]) -> str:
 
 
 def render_conversation_md(conversation: dict[str, Any]) -> str:
-    title = str(conversation.get("title") or conversation.get("id") or "Conversation").strip()
+    title = str(
+        conversation.get("title") or conversation.get("id") or "Conversation"
+    ).strip()
     text = _conversation_text(conversation)
     parts = [f"# {title}"]
     folder_id = conversation.get("folderId")
@@ -7653,33 +8601,53 @@ def render_conversation_md(conversation: dict[str, Any]) -> str:
 
 
 def render_conversation_html(conversation: dict[str, Any]) -> str:
-    title = html_escape(str(conversation.get("title") or conversation.get("id") or "Conversation"))
+    title = html_escape(
+        str(conversation.get("title") or conversation.get("id") or "Conversation")
+    )
     convo_id = html_escape(str(conversation.get("id") or "conversation"))
     text = html_escape(_conversation_text(conversation))
     tags = conversation.get("tags")
-    folder_id = html_escape(str(conversation.get("folderId") or "")) if conversation.get("folderId") else ""
-    system_prompt = html_escape(str(conversation.get("systemPrompt") or "")) if conversation.get("systemPrompt") else ""
+    folder_id = (
+        html_escape(str(conversation.get("folderId") or ""))
+        if conversation.get("folderId")
+        else ""
+    )
+    system_prompt = (
+        html_escape(str(conversation.get("systemPrompt") or ""))
+        if conversation.get("systemPrompt")
+        else ""
+    )
     knowledge = conversation.get("knowledge")
     tag_html = ""
     if isinstance(tags, list):
         tags = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tags:
-            tag_html = "<p class=\"tags\">Tags: " + ", ".join(tags) + "</p>"
-    folder_html = f"<p class=\"meta\">Folder: {folder_id}</p>" if folder_id else ""
-    system_html = f"<pre class=\"system-prompt\">{system_prompt}</pre>" if system_prompt else ""
+            tag_html = '<p class="tags">Tags: ' + ", ".join(tags) + "</p>"
+    folder_html = f'<p class="meta">Folder: {folder_id}</p>' if folder_id else ""
+    system_html = (
+        f'<pre class="system-prompt">{system_prompt}</pre>' if system_prompt else ""
+    )
     knowledge_html = ""
     if isinstance(knowledge, list):
         items = [html_escape(str(item)) for item in knowledge if str(item).strip()]
         if items:
-            knowledge_html = "<p class=\"tags\">Knowledge: " + ", ".join(items) + "</p>"
+            knowledge_html = '<p class="tags">Knowledge: ' + ", ".join(items) + "</p>"
     attachment_html = ""
     attachments = _conversation_attachments(conversation)
     if attachments:
-        attachment_html = "<p class=\"tags\">Attachments: " + ", ".join(html_escape(item) for item in attachments) + "</p>"
+        attachment_html = (
+            '<p class="tags">Attachments: '
+            + ", ".join(html_escape(item) for item in attachments)
+            + "</p>"
+        )
     image_html = ""
     images = _conversation_images(conversation)
     if images:
-        image_html = "<p class=\"tags\">Images: " + ", ".join(html_escape(item) for item in images) + "</p>"
+        image_html = (
+            '<p class="tags">Images: '
+            + ", ".join(html_escape(item) for item in images)
+            + "</p>"
+        )
     body_html = ""
     messages = conversation.get("messages")
     if isinstance(messages, list) and messages:
@@ -7689,11 +8657,14 @@ def render_conversation_html(conversation: dict[str, Any]) -> str:
                 role = html_escape(str(msg.get("role", "")))
                 content = html_escape(str(msg.get("content", "")))
                 if role and content:
-                    items.append(f"<div class=\"message\"><strong>{role}</strong><pre>{content}</pre></div>")
+                    items.append(
+                        f'<div class="message"><strong>{role}</strong><pre>{content}</pre></div>'
+                    )
         if items:
             body_html = "\n".join(items)
     if not body_html and text:
-        body_html = f"<pre class=\"transcript\">{text}</pre>"
+        body_html = f'<pre class="transcript">{text}</pre>'
+    empty_transcript_html = '<pre class="transcript"></pre>'
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -7722,7 +8693,7 @@ def render_conversation_html(conversation: dict[str, Any]) -> str:
     {knowledge_html}
     {attachment_html}
     {image_html}
-    {body_html or '<pre class=\"transcript\"></pre>'}
+    {body_html or empty_transcript_html}
   </article>
 </body>
 </html>
@@ -7742,7 +8713,9 @@ def _chat_model_candidates(settings: dict[str, Any], model_id: str) -> list[str]
     if not model_id:
         return []
     entries = _iter_model_entries(settings)
-    requested_entry = next((entry for entry in entries if str(entry.get("id")) == model_id), None)
+    requested_entry = next(
+        (entry for entry in entries if str(entry.get("id")) == model_id), None
+    )
     ordered: list[str] = []
     if isinstance(requested_entry, dict):
         requested_base = str(requested_entry.get("baseUrl") or "").strip()
@@ -7750,9 +8723,12 @@ def _chat_model_candidates(settings: dict[str, Any], model_id: str) -> list[str]
             ordered.extend(
                 str(entry.get("id"))
                 for entry in entries
-                if str(entry.get("id")) != model_id and str(entry.get("baseUrl") or "").strip() == requested_base
+                if str(entry.get("id")) != model_id
+                and str(entry.get("baseUrl") or "").strip() == requested_base
             )
-    ordered.extend(str(entry.get("id")) for entry in entries if str(entry.get("id")) != model_id)
+    ordered.extend(
+        str(entry.get("id")) for entry in entries if str(entry.get("id")) != model_id
+    )
     candidates: list[str] = []
     seen: set[str] = set()
     for candidate in [model_id, *ordered]:
@@ -7765,7 +8741,18 @@ def _chat_model_candidates(settings: dict[str, Any], model_id: str) -> list[str]
 
 def _request_error_is_missing_model(error: RequestError) -> bool:
     message = str(error).lower()
-    return "not_found_error" in message or ("model" in message and "not found" in message)
+    return "not_found_error" in message or (
+        "model" in message and "not found" in message
+    )
+
+
+def _request_error_allows_fallback(
+    settings: dict[str, Any], error: RequestError
+) -> bool:
+    general = settings.get("general")
+    if isinstance(general, dict) and general.get("autoFallback") is True:
+        return True
+    return _request_error_is_missing_model(error)
 
 
 def _settings_model_provider_key(settings: dict[str, Any]) -> str:
@@ -7811,7 +8798,9 @@ def _provider_base_url(provider_key: str, entry: dict[str, Any]) -> str:
         return normalize_url(base_url)
     preset = PRESETS.get(provider_key)
     if preset is not None:
-        return normalize_url(os.environ.get(BASE_URL_HINT_ENV.get(provider_key, ""), preset.base_url))
+        return normalize_url(
+            os.environ.get(BASE_URL_HINT_ENV.get(provider_key, ""), preset.base_url)
+        )
     return ""
 
 
@@ -7949,7 +8938,14 @@ def _settings_tool_servers(settings: dict[str, Any]) -> list[dict[str, Any]]:
 def _settings_webhooks(settings: dict[str, Any]) -> list[dict[str, Any]]:
     webhooks = normalize_webhooks(settings)
     webhooks.sort(key=lambda item: str(item.get("id", "")).lower())
-    return webhooks
+    return [_public_webhook(item) for item in webhooks]
+
+
+def _public_webhook(hook: dict[str, Any]) -> dict[str, Any]:
+    public = {key: value for key, value in hook.items() if key != "secret"}
+    if "secret" in hook:
+        public["secretConfigured"] = bool(str(hook.get("secret") or "").strip())
+    return public
 
 
 def _settings_bootstrap(settings: dict[str, Any]) -> dict[str, Any]:
@@ -7971,6 +8967,10 @@ def _settings_bootstrap(settings: dict[str, Any]) -> dict[str, Any]:
         "version": VERSION,
         "selectedModel": _settings_default_model(settings),
         "selectedProvider": _settings_model_provider_key(settings),
+        "autoFallback": bool(
+            isinstance(settings.get("general"), dict)
+            and settings.get("general", {}).get("autoFallback") is True
+        ),
         "models": models,
         "promptTemplates": templates,
         "folders": [
@@ -8031,7 +9031,9 @@ def _settings_bootstrap(settings: dict[str, Any]) -> dict[str, Any]:
                 "id": agent.get("id"),
                 "name": agent.get("name"),
                 "baseModel": agent.get("baseModel", agent.get("model", "")),
-                "systemPrompt": agent.get("systemPrompt", agent.get("instructions", agent.get("prompt", ""))),
+                "systemPrompt": agent.get(
+                    "systemPrompt", agent.get("instructions", agent.get("prompt", ""))
+                ),
                 "description": agent.get("description", ""),
                 "tools": agent.get("tools", []),
                 "knowledge": agent.get("knowledge", []),
@@ -8105,19 +9107,7 @@ def _settings_bootstrap(settings: dict[str, Any]) -> dict[str, Any]:
             }
             for server in tool_servers
         ],
-        "webhooks": [
-            {
-                "id": hook.get("id"),
-                "name": hook.get("name"),
-                "url": hook.get("url", ""),
-                "events": hook.get("events", []),
-                "description": hook.get("description", ""),
-                "secret": hook.get("secret", ""),
-                "tags": hook.get("tags", []),
-                "enabled": hook.get("enabled", True),
-            }
-            for hook in webhooks
-        ],
+        "webhooks": [_public_webhook(hook) for hook in webhooks],
     }
 
 
@@ -8205,7 +9195,9 @@ def _chat_messages(messages: Any) -> list[dict[str, str]]:
     return normalized
 
 
-def _suggest_chat_title(messages: list[dict[str, str]], fallback: str = "New chat") -> str:
+def _suggest_chat_title(
+    messages: list[dict[str, str]], fallback: str = "New chat"
+) -> str:
     if not isinstance(messages, list):
         return fallback
     source = ""
@@ -8304,7 +9296,14 @@ def _chat_completion_request(
         if key in payload and payload[key] is not None:
             request_payload[key] = payload[key]
     timeout = _model_timeout_seconds(entry)
-    return entry, base_url, timeout, api_key, _chat_completion_url(base_url), request_payload
+    return (
+        entry,
+        base_url,
+        timeout,
+        api_key,
+        _chat_completion_url(base_url),
+        request_payload,
+    )
 
 
 def _chat_stream_event_text(event: Any) -> str:
@@ -8375,7 +9374,9 @@ def _stream_chat_completion(
     request_payload["stream"] = True
     content_parts: list[str] = []
     response_payload: dict[str, Any] | None = None
-    with request_stream_post(url, api_key, request_payload, timeout, insecure=insecure) as response:
+    with request_stream_post(
+        url, api_key, request_payload, timeout, insecure=insecure
+    ) as response:
         content_type = ""
         if hasattr(response, "headers") and response.headers is not None:
             content_type = str(response.headers.get("Content-Type", ""))
@@ -8440,7 +9441,9 @@ def _chat_completion(
         settings, model_id, messages, payload
     )
     request_payload["stream"] = False
-    response = request_json_post(url, api_key, request_payload, timeout, insecure=insecure)
+    response = request_json_post(
+        url, api_key, request_payload, timeout, insecure=insecure
+    )
     content = _chat_response_text(response, model_id)
     created = int(time.time())
     if isinstance(response, dict):
@@ -8448,7 +9451,9 @@ def _chat_completion(
         if isinstance(maybe_created, int):
             created = maybe_created
     return {
-        "id": str(response.get("id", f"chatcmpl-{created}")) if isinstance(response, dict) else f"chatcmpl-{created}",
+        "id": str(response.get("id", f"chatcmpl-{created}"))
+        if isinstance(response, dict)
+        else f"chatcmpl-{created}",
         "object": "chat.completion",
         "created": created,
         "model": model_id,
@@ -8483,7 +9488,10 @@ def _chat_requested_models(payload: dict[str, Any], default_model: str) -> list[
     default_model = default_model.strip()
     if default_model:
         if default_model in requested:
-            requested = [default_model, *[model_id for model_id in requested if model_id != default_model]]
+            requested = [
+                default_model,
+                *[model_id for model_id in requested if model_id != default_model],
+            ]
         else:
             requested.insert(0, default_model)
     return requested
@@ -8508,7 +9516,9 @@ def _chat_model_result(
             insecure=insecure,
             on_delta=on_delta,
         )
-    response = _chat_completion(settings, model_id, messages, payload, insecure=insecure)
+    response = _chat_completion(
+        settings, model_id, messages, payload, insecure=insecure
+    )
     return response, _chat_response_text(response, model_id)
 
 
@@ -8548,8 +9558,12 @@ def _chat_multi_completion(
             {
                 "model": model_id,
                 "content": content,
-                "provider": response.get("provider") if isinstance(response, dict) else None,
-                "providerName": response.get("providerName") if isinstance(response, dict) else None,
+                "provider": response.get("provider")
+                if isinstance(response, dict)
+                else None,
+                "providerName": response.get("providerName")
+                if isinstance(response, dict)
+                else None,
             }
         )
         combined_parts.append(content or "(empty response)")
@@ -8587,10 +9601,14 @@ def _chat_completion(
     last_error: RequestError | None = None
     for candidate in candidates:
         try:
-            return _CHAT_COMPLETION_SINGLE(settings, candidate, messages, payload, insecure=insecure)
+            return _CHAT_COMPLETION_SINGLE(
+                settings, candidate, messages, payload, insecure=insecure
+            )
         except RequestError as exc:
             last_error = exc
-            if candidate != candidates[-1] and _request_error_is_missing_model(exc):
+            if candidate != candidates[-1] and _request_error_allows_fallback(
+                settings, exc
+            ):
                 continue
             raise
     if last_error is not None:
@@ -8620,7 +9638,9 @@ def _stream_chat_completion(
             )
         except RequestError as exc:
             last_error = exc
-            if candidate != candidates[-1] and _request_error_is_missing_model(exc):
+            if candidate != candidates[-1] and _request_error_allows_fallback(
+                settings, exc
+            ):
                 continue
             raise
     if last_error is not None:
@@ -8774,6 +9794,10 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     .voice-toggle {{
       min-width: 92px;
       justify-content: center;
+    }}
+    .voice-select {{
+      min-width: 180px;
+      max-width: 240px;
     }}
     .brand {{
       display: flex;
@@ -8935,6 +9959,25 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       gap: 10px;
     }}
     .provider-controls .toolbar {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+    .provider-empty {{
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px dashed rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.03);
+    }}
+    .provider-empty p,
+    .conversation-empty p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }}
+    .provider-empty .toolbar,
+    .conversation-empty .toolbar {{
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }}
     .provider-item {{
@@ -9344,6 +10387,53 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       align-items: center;
       gap: 8px;
     }}
+    .file-tree {{
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .file-tree-dir {{
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.02);
+      overflow: hidden;
+    }}
+    .file-tree-dir > summary {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      list-style: none;
+    }}
+    .file-tree-dir > summary::-webkit-details-marker {{
+      display: none;
+    }}
+    .file-tree-summary {{
+      font-weight: 700;
+    }}
+    .file-tree-summary .muted {{
+      margin-left: auto;
+      font-weight: 500;
+    }}
+    .file-tree-children {{
+      padding: 0 0 12px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .file-item.selected {{
+      border-color: rgba(102, 227, 196, 0.35);
+      background: rgba(102, 227, 196, 0.08);
+    }}
+    .file-item .select-toggle {{
+      flex: 0 0 auto;
+      min-width: 88px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+    }}
     .file-item .chip {{
       flex: 1;
       text-align: left;
@@ -9452,6 +10542,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       background: rgba(102, 227, 196, 0.08);
     }}
     .conversation-item small {{ color: var(--muted); display: block; margin-top: 4px; }}
+    .conversation-item .conversation-item-snippet {{
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-top: 2px;
+    }}
     .conversation-item-body {{
       display: grid;
       gap: 8px;
@@ -9479,6 +10579,34 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       border-radius: 10px;
       font-size: 0.82rem;
       flex: 1;
+    }}
+    .conversation-empty {{
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px dashed rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.03);
+    }}
+    .clear-context-divider {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 0 6px;
+      padding: 10px 14px;
+      border: 1px dashed rgba(102, 227, 196, 0.28);
+      border-radius: 16px;
+      color: var(--muted);
+      background: rgba(102, 227, 196, 0.05);
+    }}
+    .clear-context-divider strong {{
+      color: var(--text);
+    }}
+    .clear-context-divider button {{
+      flex: 0 0 auto;
+      padding: 8px 10px;
+      border-radius: 999px;
+      font-size: 0.82rem;
     }}
     .main {{
       display: grid;
@@ -9710,6 +10838,120 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       overflow: hidden;
       border-radius: 14px;
     }}
+    .message-content .callout {{
+      display: grid;
+      gap: 8px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(102, 227, 196, 0.16);
+      background: rgba(102, 227, 196, 0.07);
+    }}
+    .message-content .callout-title {{
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #8bf0db;
+    }}
+    .message-content .callout-body {{
+      display: grid;
+      gap: 0.75rem;
+    }}
+    .message-content .footnotes {{
+      display: grid;
+      gap: 10px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      font-size: 0.92rem;
+    }}
+    .message-content .footnotes ol {{
+      margin: 0;
+      padding-left: 1.4rem;
+      display: grid;
+      gap: 8px;
+    }}
+    .message-content .footnote-ref {{
+      font-size: 0.82em;
+      vertical-align: super;
+    }}
+    .message-content .footnote-backref {{
+      margin-left: 0.35rem;
+      text-decoration: none;
+    }}
+    .message-content .citation {{
+      display: inline-flex;
+      align-items: center;
+      padding: 0.04rem 0.42rem;
+      margin: 0 0.06rem;
+      border-radius: 999px;
+      font-size: 0.82em;
+      font-weight: 700;
+      background: rgba(124, 156, 255, 0.12);
+      border: 1px solid rgba(124, 156, 255, 0.22);
+      color: #dbe7ff;
+      font: inherit;
+      line-height: inherit;
+      cursor: pointer;
+    }}
+    .message-sources {{
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }}
+    .message-sources-title {{
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }}
+    .message-sources-list {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .message-source-chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(124, 156, 255, 0.18);
+      background: rgba(124, 156, 255, 0.08);
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 0.86rem;
+      cursor: pointer;
+    }}
+    .message-source-chip .muted {{
+      font-size: 0.82em;
+    }}
+    .message-content .mention {{
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0.08rem 0.42rem;
+      border-radius: 999px;
+      font-size: 0.9em;
+      font-weight: 600;
+      border: 1px solid transparent;
+    }}
+    .message-content .mention-at {{
+      background: rgba(124, 156, 255, 0.12);
+      color: #cfe0ff;
+      border-color: rgba(124, 156, 255, 0.22);
+    }}
+    .message-content .mention-hash {{
+      background: rgba(102, 227, 196, 0.12);
+      color: #d5fff5;
+      border-color: rgba(102, 227, 196, 0.22);
+    }}
+    .message-content .mention-dollar {{
+      background: rgba(250, 204, 21, 0.12);
+      color: #fff0b3;
+      border-color: rgba(250, 204, 21, 0.22);
+    }}
     .message-content th,
     .message-content td {{
       border: 1px solid rgba(255,255,255,0.08);
@@ -9810,6 +11052,56 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       display: grid;
       grid-template-columns: 1.15fr 0.85fr;
       gap: 14px;
+    }}
+    .onboarding-summary {{
+      display: grid;
+      gap: 12px;
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(102, 227, 196, 0.24);
+      background:
+        linear-gradient(135deg, rgba(102, 227, 196, 0.12), rgba(124, 156, 255, 0.10)),
+        rgba(11, 16, 32, 0.72);
+    }}
+    .onboarding-summary header {{
+      display: grid;
+      gap: 6px;
+    }}
+    .onboarding-summary h4 {{
+      margin: 0;
+      font-size: 1rem;
+    }}
+    .onboarding-summary p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }}
+    .onboarding-badges {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .onboarding-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font-size: 0.82rem;
+      font-weight: 700;
+    }}
+    .onboarding-badge.missing {{
+      border-color: rgba(255, 119, 131, 0.32);
+      background: rgba(255, 119, 131, 0.10);
+      color: #ffd4d8;
+    }}
+    .onboarding-badge.ready {{
+      border-color: rgba(102, 227, 196, 0.30);
+      background: rgba(102, 227, 196, 0.10);
+      color: #d8fff4;
     }}
     .onboarding-panel {{
       display: grid;
@@ -9932,6 +11224,24 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       flex: 1;
       min-width: min(460px, 100%);
     }}
+    .composer-state {{
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px dashed rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.03);
+    }}
+    .composer-state p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }}
+    .composer-state .toolbar {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
     .composer-quick-actions {{
       display: flex;
       flex-wrap: wrap;
@@ -10048,15 +11358,1147 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         display: none;
       }}
     }}
+
+    /* Qwen Gen visual system refresh: quiet chrome, clear hierarchy, focused writing surface. */
+    :root {{
+      --bg: #080b12;
+      --panel: #111722;
+      --panel-2: #171f2d;
+      --line: rgba(167, 183, 210, 0.16);
+      --line-strong: rgba(167, 183, 210, 0.28);
+      --text: #f3f6fb;
+      --muted: #99a7ba;
+      --accent: #7ce6c3;
+      --accent-2: #93a9ff;
+      --danger: #ff8798;
+      --bubble-user: #213154;
+      --bubble-assistant: #131c2b;
+      --shadow: 0 24px 72px rgba(0, 0, 0, 0.32);
+      --radius-card: 18px;
+      --radius-control: 12px;
+      --motion: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    }}
+    body {{
+      background:
+        radial-gradient(circle at 0% 0%, rgba(124, 230, 195, 0.11), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(147, 169, 255, 0.12), transparent 28%),
+        linear-gradient(180deg, #080b12 0%, #0b1019 100%);
+      letter-spacing: -0.005em;
+    }}
+    body::selection {{
+      background: rgba(124, 230, 195, 0.32);
+      color: var(--text);
+    }}
+    .app {{
+      grid-template-columns: 276px minmax(0, 1fr);
+    }}
+    .app::before {{
+      background:
+        radial-gradient(circle at 16% 12%, rgba(124, 230, 195, 0.08), transparent 26%),
+        radial-gradient(circle at 84% 4%, rgba(147, 169, 255, 0.08), transparent 24%),
+        linear-gradient(transparent 95%, rgba(255,255,255,0.025) 95%),
+        linear-gradient(90deg, transparent 95%, rgba(255,255,255,0.025) 95%);
+      background-size: auto, auto, 80px 80px, 80px 80px;
+      opacity: 0.32;
+    }}
+    .skip-link {{
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 60;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #071018;
+      font-weight: 800;
+      text-decoration: none;
+      transform: translateY(-160%);
+      transition: transform var(--motion);
+    }}
+    .skip-link:focus {{
+      transform: translateY(0);
+    }}
+    .sidebar {{
+      padding: 18px 12px 14px;
+      gap: 14px;
+      background: linear-gradient(180deg, rgba(12, 17, 28, 0.96), rgba(9, 13, 21, 0.92));
+      border-right-color: rgba(167, 183, 210, 0.14);
+      box-shadow: 18px 0 50px rgba(0, 0, 0, 0.14);
+    }}
+    .brand {{
+      position: relative;
+      padding: 6px 10px 16px 56px;
+      border-bottom: 1px solid rgba(167, 183, 210, 0.14);
+    }}
+    .brand::before {{
+      content: 'Q';
+      position: absolute;
+      top: 7px;
+      left: 8px;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #071018;
+      font-size: 1.15rem;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      box-shadow: 0 10px 24px rgba(124, 230, 195, 0.16);
+    }}
+    .brand::after {{
+      content: 'LOCAL WORKSPACE';
+      position: absolute;
+      left: 56px;
+      bottom: 3px;
+      color: var(--accent);
+      font-size: 0.56rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+    }}
+    .brand h1 {{
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }}
+    .brand p {{
+      max-width: 190px;
+      font-size: 0.76rem;
+      line-height: 1.45;
+    }}
+    .workspace-hero {{
+      gap: 10px;
+      padding: 14px;
+      border-radius: var(--radius-card);
+      border-color: rgba(124, 230, 195, 0.22);
+      background:
+        linear-gradient(145deg, rgba(124, 230, 195, 0.13), rgba(147, 169, 255, 0.07)),
+        rgba(17, 23, 34, 0.82);
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.16);
+    }}
+    .workspace-hero .eyebrow {{
+      font-size: 0.62rem;
+      letter-spacing: 0.16em;
+    }}
+    .workspace-hero h2 {{
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }}
+    .workspace-hero p {{
+      font-size: 0.78rem;
+      line-height: 1.48;
+    }}
+    .workspace-stats {{
+      gap: 8px;
+    }}
+    .workspace-stat {{
+      padding: 9px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.045);
+    }}
+    .workspace-stat strong {{
+      font-size: 0.84rem;
+    }}
+    .workspace-stat span {{
+      font-size: 0.68rem;
+      line-height: 1.35;
+    }}
+    .panel {{
+      border-radius: var(--radius-card);
+      padding: 12px;
+      background: rgba(17, 23, 34, 0.82);
+      border-color: rgba(167, 183, 210, 0.14);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.14);
+    }}
+    .sidebar > .panel.stack {{
+      gap: 0;
+      padding: 8px;
+      background: rgba(13, 18, 28, 0.78);
+      box-shadow: none;
+    }}
+    .sidebar > .panel.stack > * {{
+      padding: 12px 6px 14px;
+      border-bottom: 1px solid rgba(167, 183, 210, 0.11);
+    }}
+    .sidebar > .panel.stack > *:first-child {{
+      padding-top: 6px;
+    }}
+    .sidebar > .panel.stack > *:last-child {{
+      border-bottom: 0;
+      padding-bottom: 6px;
+    }}
+    .label {{
+      margin-bottom: 7px;
+      color: #aebbd0;
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+    }}
+    select, textarea, input {{
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: var(--radius-control);
+      border-color: rgba(167, 183, 210, 0.18);
+      background: rgba(10, 15, 24, 0.78);
+      color: var(--text);
+      transition: border-color var(--motion), box-shadow var(--motion), background var(--motion);
+    }}
+    select:hover, textarea:hover, input:hover {{
+      border-color: rgba(167, 183, 210, 0.34);
+    }}
+    select:focus, textarea:focus, input:focus {{
+      border-color: rgba(124, 230, 195, 0.72);
+      background: rgba(15, 22, 34, 0.96);
+      box-shadow: 0 0 0 3px rgba(124, 230, 195, 0.12);
+    }}
+    textarea {{
+      line-height: 1.55;
+    }}
+    button {{
+      min-height: 44px;
+      padding: 10px 13px;
+      border-radius: var(--radius-control);
+      background: linear-gradient(135deg, #83e9cf, #9aabff);
+      color: #071018;
+      box-shadow: 0 8px 20px rgba(124, 230, 195, 0.12);
+      transition: transform var(--motion), box-shadow var(--motion), filter var(--motion), border-color var(--motion), background var(--motion);
+    }}
+    button:hover:not(:disabled) {{
+      filter: brightness(1.06);
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px rgba(124, 230, 195, 0.16);
+    }}
+    button:active:not(:disabled) {{
+      transform: translateY(0);
+    }}
+    button:disabled {{
+      cursor: not-allowed;
+      opacity: 0.48;
+      box-shadow: none;
+    }}
+    button.secondary {{
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--text);
+      border-color: rgba(167, 183, 210, 0.2);
+      box-shadow: none;
+    }}
+    button.secondary:hover:not(:disabled) {{
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(167, 183, 210, 0.38);
+      box-shadow: none;
+    }}
+    button.danger {{
+      background: rgba(255, 135, 152, 0.11);
+      color: #ffd6dc;
+      border-color: rgba(255, 135, 152, 0.28);
+      box-shadow: none;
+    }}
+    button.danger:hover:not(:disabled) {{
+      background: rgba(255, 135, 152, 0.18);
+      border-color: rgba(255, 135, 152, 0.44);
+    }}
+    button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible {{
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }}
+    .hint {{
+      color: #8998ae;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }}
+    .muted {{
+      color: var(--muted);
+    }}
+    .chip {{
+      min-height: 38px;
+      padding: 8px 11px;
+      border-color: rgba(167, 183, 210, 0.18);
+      background: rgba(255, 255, 255, 0.045);
+      transition: background var(--motion), border-color var(--motion), transform var(--motion);
+    }}
+    .chip:hover {{
+      background: rgba(124, 230, 195, 0.08);
+      border-color: rgba(124, 230, 195, 0.34);
+      transform: translateY(-1px);
+    }}
+    .resource-preview, .resource-editor, .agent-editor {{
+      border-color: rgba(167, 183, 210, 0.15);
+      background: rgba(255, 255, 255, 0.028);
+    }}
+    .resource-preview {{
+      background: rgba(8, 12, 19, 0.62);
+      line-height: 1.5;
+    }}
+    .conversation-item, .template-item, .template-gallery-card, .resource-item {{
+      border-color: rgba(167, 183, 210, 0.15);
+      background: rgba(255, 255, 255, 0.035);
+      transition: border-color var(--motion), background var(--motion), transform var(--motion);
+    }}
+    .conversation-item:hover, .template-item:hover, .template-gallery-card:hover, .resource-item:hover {{
+      border-color: rgba(124, 230, 195, 0.34);
+      background: rgba(124, 230, 195, 0.055);
+    }}
+    .conversation-item.active, .template-gallery-card.active, .file-item.selected {{
+      border-color: rgba(124, 230, 195, 0.48);
+      background: rgba(124, 230, 195, 0.09);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }}
+    .topbar {{
+      gap: 10px;
+      padding: 14px clamp(18px, 3vw, 42px) 12px;
+      background: rgba(8, 12, 19, 0.78);
+      border-bottom-color: rgba(167, 183, 210, 0.14);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+    }}
+    .topbar-head {{
+      min-height: 44px;
+    }}
+    .topbar h2 {{
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
+    }}
+    .topbar .meta {{
+      font-size: 0.8rem;
+    }}
+    .topbar-head .toolbar {{
+      gap: 6px;
+      max-width: 72%;
+    }}
+    .topbar-head .toolbar button {{
+      min-height: 38px;
+      padding: 8px 10px;
+      font-size: 0.75rem;
+    }}
+    .session-banner {{
+      gap: 8px;
+      padding: 11px 13px;
+      border-radius: 14px;
+      border-color: rgba(124, 230, 195, 0.18);
+      background: linear-gradient(90deg, rgba(124, 230, 195, 0.09), rgba(147, 169, 255, 0.055));
+    }}
+    .session-banner .eyebrow {{
+      margin-bottom: 5px;
+      font-size: 0.58rem;
+      letter-spacing: 0.15em;
+    }}
+    .session-banner h3 {{
+      font-size: 0.84rem;
+    }}
+    .session-banner p {{
+      margin-top: 4px;
+      font-size: 0.76rem;
+    }}
+    .status-pills {{
+      gap: 6px;
+    }}
+    .pill {{
+      padding: 6px 9px;
+      font-size: 0.72rem;
+      background: rgba(255, 255, 255, 0.045);
+    }}
+    #streaming-status {{
+      font-size: 0.76rem;
+    }}
+    .main {{
+      background: rgba(8, 12, 19, 0.16);
+    }}
+    .chat {{
+      width: min(980px, 100%);
+      gap: 18px;
+      padding: clamp(24px, 4vh, 42px) clamp(18px, 4vw, 58px) 26px;
+    }}
+    .message {{
+      max-width: min(780px, 100%);
+      padding: 16px 20px;
+      border-radius: 16px;
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.13);
+    }}
+    .message.user {{
+      background: linear-gradient(145deg, rgba(33, 49, 84, 0.98), rgba(25, 38, 66, 0.96));
+      border-color: rgba(147, 169, 255, 0.23);
+    }}
+    .message.assistant {{
+      background: linear-gradient(145deg, rgba(19, 28, 43, 0.96), rgba(15, 23, 36, 0.96));
+      border-color: rgba(124, 230, 195, 0.16);
+    }}
+    .message .role {{
+      margin-bottom: 9px;
+      padding: 5px 9px;
+      font-size: 0.64rem;
+      letter-spacing: 0.12em;
+      background: rgba(255, 255, 255, 0.045);
+    }}
+    .message-content {{
+      gap: 0.72rem;
+      font-size: 0.94rem;
+      line-height: 1.68;
+    }}
+    .message-actions {{
+      opacity: 0.72;
+      transition: opacity var(--motion);
+    }}
+    .message:hover .message-actions, .message:focus-within .message-actions {{
+      opacity: 1;
+    }}
+    .message-actions button {{
+      min-height: 36px;
+      padding: 7px 10px;
+    }}
+    .chat-empty-card {{
+      border-radius: 20px;
+      border-color: rgba(124, 230, 195, 0.18);
+      background:
+        radial-gradient(circle at top left, rgba(124, 230, 195, 0.12), transparent 34%),
+        rgba(17, 23, 34, 0.86);
+    }}
+    .chat-empty-card h3 {{
+      letter-spacing: -0.03em;
+    }}
+    .composer {{
+      padding: 11px clamp(18px, 4vw, 42px) 18px;
+      background: linear-gradient(180deg, rgba(8, 12, 19, 0.76), rgba(8, 12, 19, 0.96));
+      border-top-color: rgba(167, 183, 210, 0.14);
+    }}
+    .composer form {{
+      width: min(980px, 100%);
+      gap: 10px;
+    }}
+    .composer-surface {{
+      gap: 8px;
+      padding: 9px 11px 10px;
+      border-radius: 18px;
+      border-color: rgba(167, 183, 210, 0.2);
+      background: linear-gradient(180deg, rgba(20, 28, 42, 0.94), rgba(13, 19, 29, 0.96));
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
+    }}
+    .composer-surface textarea {{
+      min-height: 108px;
+      padding: 14px 15px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.025);
+      font-size: 0.98rem;
+    }}
+    .composer-surface textarea:focus {{
+      border-color: rgba(124, 230, 195, 0.46);
+      background: rgba(255, 255, 255, 0.04);
+    }}
+    .composer-actions {{
+      padding-top: 8px;
+      border-top: 1px solid rgba(167, 183, 210, 0.12);
+    }}
+    .composer-actions .hint {{
+      font-size: 0.74rem;
+    }}
+    .composer-actions > .toolbar button {{
+      min-width: 96px;
+    }}
+    .composer-strip {{
+      padding: 0 4px;
+    }}
+    .composer-strip .hint {{
+      min-width: 0;
+      font-size: 0.72rem;
+    }}
+    .template-drawer-panel, .file-preview, .shortcuts-dialog {{
+      border-color: rgba(167, 183, 210, 0.2);
+      background: rgba(14, 20, 31, 0.98);
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+    }}
+    .file-preview-backdrop, .shortcuts-backdrop, .template-drawer-backdrop {{
+      background: rgba(3, 6, 11, 0.78);
+    }}
+    .app.sidebar-collapsed {{
+      grid-template-columns: 76px minmax(0, 1fr);
+    }}
+    .app.sidebar-collapsed .sidebar {{
+      padding: 18px 9px 14px;
+    }}
+    .app.sidebar-collapsed .brand {{
+      padding: 6px 0 16px;
+    }}
+    .app.sidebar-collapsed .brand::before {{
+      position: static;
+      margin: 0 auto;
+    }}
+    .app.sidebar-collapsed .brand::after {{
+      display: none;
+    }}
+    .app.sidebar-collapsed .brand h1 {{
+      margin-top: 10px;
+      font-size: 0.72rem;
+      letter-spacing: 0;
+    }}
+    @media (max-width: 1180px) {{
+      .app {{
+        grid-template-columns: 248px minmax(0, 1fr);
+      }}
+      .topbar-head .toolbar {{
+        max-width: 100%;
+      }}
+    }}
+    @media (max-width: 980px) {{
+      .app, .app.sidebar-collapsed {{
+        grid-template-columns: 1fr;
+      }}
+      .sidebar {{
+        position: relative;
+        height: auto;
+        max-height: 58vh;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }}
+      .app.sidebar-collapsed .sidebar {{
+        display: none;
+      }}
+      .topbar-head {{
+        align-items: flex-start;
+      }}
+      .topbar-head .toolbar {{
+        width: 100%;
+        max-width: none;
+      }}
+      .session-banner {{
+        display: none;
+      }}
+    }}
+    @media (max-width: 640px) {{
+      .topbar {{
+        padding: 12px 14px 10px;
+      }}
+      .topbar-head {{
+        flex-direction: column;
+        gap: 10px;
+      }}
+      .topbar-head .toolbar {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      .topbar-head .toolbar > * {{
+        width: 100%;
+        max-width: none;
+      }}
+      .chat {{
+        padding: 20px 14px 22px;
+      }}
+      .message {{
+        max-width: 100%;
+        padding: 14px 16px;
+      }}
+      .composer {{
+        padding: 9px 14px 14px;
+      }}
+      .composer-actions {{
+        align-items: stretch;
+      }}
+      .composer-actions > .toolbar {{
+        width: 100%;
+      }}
+      .composer-actions > .toolbar button {{
+        flex: 1;
+      }}
+      .onboarding-grid {{
+        grid-template-columns: 1fr;
+      }}
+      .template-drawer-panel {{
+        top: 8px;
+        right: 8px;
+        bottom: 8px;
+        width: calc(100vw - 16px);
+        padding: 14px;
+        border-radius: 18px;
+      }}
+      .template-gallery-body {{
+        grid-template-columns: 1fr;
+      }}
+      .template-compare {{
+        padding-left: 0;
+      }}
+      .shortcut-row {{
+        grid-template-columns: 1fr;
+      }}
+    }}
+    @media (prefers-reduced-motion: reduce) {{
+      *, *::before, *::after {{
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }}
+    }}
+    body[data-theme="light"] {{
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --panel-2: #eef2f7;
+      --line: rgba(30, 45, 68, 0.14);
+      --line-strong: rgba(30, 45, 68, 0.24);
+      --text: #152033;
+      --muted: #5c6b80;
+      --accent: #087f68;
+      --accent-2: #425fca;
+      --danger: #b93c55;
+      --bubble-user: #e2eaff;
+      --bubble-assistant: #ffffff;
+      --shadow: 0 22px 64px rgba(42, 59, 91, 0.14);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(8, 127, 104, 0.10), transparent 28%),
+        radial-gradient(circle at 100% 0%, rgba(66, 95, 202, 0.10), transparent 28%),
+        linear-gradient(180deg, #fbfdff 0%, #eef3f9 100%);
+    }}
+    body[data-theme="light"] .sidebar {{
+      background: linear-gradient(180deg, rgba(250, 252, 255, 0.96), rgba(242, 246, 251, 0.94));
+      box-shadow: 18px 0 50px rgba(48, 64, 91, 0.06);
+    }}
+    body[data-theme="light"] .sidebar > .panel.stack, body[data-theme="light"] .panel {{
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 12px 34px rgba(48, 64, 91, 0.06);
+    }}
+    body[data-theme="light"] .workspace-hero {{
+      background: linear-gradient(145deg, rgba(8, 127, 104, 0.10), rgba(66, 95, 202, 0.07)), #ffffff;
+    }}
+    body[data-theme="light"] select, body[data-theme="light"] textarea, body[data-theme="light"] input {{
+      background: rgba(247, 249, 252, 0.96);
+      border-color: rgba(30, 45, 68, 0.16);
+    }}
+    body[data-theme="light"] select:focus, body[data-theme="light"] textarea:focus, body[data-theme="light"] input:focus {{
+      background: #ffffff;
+    }}
+    body[data-theme="light"] button.secondary {{
+      background: #f1f4f8;
+      border-color: rgba(30, 45, 68, 0.18);
+    }}
+    body[data-theme="light"] button.secondary:hover:not(:disabled) {{
+      background: #e8edf4;
+    }}
+    body[data-theme="light"] button.danger {{
+      color: #9f2f48;
+      background: rgba(185, 60, 85, 0.08);
+      border-color: rgba(185, 60, 85, 0.22);
+    }}
+    body[data-theme="light"] .topbar {{
+      background: rgba(250, 252, 255, 0.86);
+      box-shadow: 0 10px 28px rgba(48, 64, 91, 0.06);
+    }}
+    body[data-theme="light"] .main {{
+      background: rgba(255, 255, 255, 0.18);
+    }}
+    body[data-theme="light"] .session-banner {{
+      background: linear-gradient(90deg, rgba(8, 127, 104, 0.08), rgba(66, 95, 202, 0.06));
+    }}
+    body[data-theme="light"] .composer {{
+      background: linear-gradient(180deg, rgba(250, 252, 255, 0.84), rgba(244, 248, 252, 0.98));
+    }}
+    body[data-theme="light"] .composer-surface {{
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 252, 0.98));
+      box-shadow: 0 18px 44px rgba(48, 64, 91, 0.10);
+    }}
+    body[data-theme="light"] .composer-surface textarea {{
+      background: rgba(242, 246, 250, 0.72);
+    }}
+    body[data-theme="light"] .message.user {{
+      color: #172541;
+      background: linear-gradient(145deg, #e5ecff, #dce7fb);
+      border-color: rgba(66, 95, 202, 0.20);
+    }}
+    body[data-theme="light"] .message.assistant {{
+      background: rgba(255, 255, 255, 0.90);
+      border-color: rgba(8, 127, 104, 0.18);
+    }}
+    body[data-theme="light"] .message.system, body[data-theme="light"] .chat-empty-card {{
+      background: rgba(255, 255, 255, 0.92);
+    }}
+    body[data-theme="light"] .message-content pre, body[data-theme="light"] .resource-preview, body[data-theme="light"] .template-compare pre, body[data-theme="light"] .file-preview pre {{
+      background: #f2f5f9;
+      color: var(--text);
+    }}
+    body[data-theme="light"] .template-drawer-panel, body[data-theme="light"] .file-preview, body[data-theme="light"] .shortcuts-dialog {{
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 28px 90px rgba(48, 64, 91, 0.20);
+    }}
+    .main {{
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+    }}
+    .dashboard-view {{
+      grid-row: 1;
+      scroll-margin-top: 18px;
+    }}
+    .topbar {{
+      grid-row: 2;
+    }}
+    .chat {{
+      grid-row: 3;
+      scroll-margin-top: 18px;
+    }}
+    .composer {{
+      grid-row: 4;
+    }}
+    .app.sidebar-collapsed .sidebar > .dashboard-nav {{
+      display: grid;
+      padding: 4px;
+      border-color: rgba(167, 183, 210, 0.12);
+      background: rgba(13, 18, 28, 0.56);
+    }}
+    .app.sidebar-collapsed .dashboard-nav-title {{
+      display: none;
+    }}
+    .app.sidebar-collapsed .dashboard-nav button {{
+      justify-content: center;
+      min-height: 36px;
+      padding: 7px;
+      font-size: 0;
+    }}
+    .app.sidebar-collapsed .dashboard-nav button span, .app.sidebar-collapsed .dashboard-nav button small {{
+      display: none;
+    }}
+    .app.sidebar-collapsed .dashboard-nav button::before {{
+      margin: 0;
+      font-size: 1rem;
+    }}
+    .dashboard-nav {{
+      display: grid;
+      gap: 4px;
+      padding: 8px;
+      border: 1px solid rgba(167, 183, 210, 0.14);
+      border-radius: var(--radius-card);
+      background: rgba(13, 18, 28, 0.74);
+    }}
+    .dashboard-nav-title {{
+      padding: 2px 8px 6px;
+      color: var(--accent);
+      font-size: 0.58rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }}
+    .dashboard-nav button {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      box-shadow: none;
+      font-size: 0.76rem;
+      text-align: left;
+    }}
+    .dashboard-nav button::before {{
+      content: '•';
+      color: rgba(153, 167, 186, 0.62);
+      font-size: 1rem;
+      line-height: 0;
+    }}
+    .dashboard-nav button span {{
+      flex: 1;
+    }}
+    .dashboard-nav button small {{
+      color: rgba(153, 167, 186, 0.72);
+      font-size: 0.62rem;
+    }}
+    .dashboard-nav button:hover:not(:disabled), .dashboard-nav button.active {{
+      border-color: rgba(124, 230, 195, 0.24);
+      background: rgba(124, 230, 195, 0.09);
+      color: var(--text);
+      transform: none;
+    }}
+    .dashboard-nav button.active::before {{
+      color: var(--accent);
+    }}
+    .dashboard-view {{
+      display: grid;
+      gap: 14px;
+      width: min(1240px, 100%);
+      margin: 0 auto;
+      padding: 18px clamp(18px, 3vw, 42px) 12px;
+      overflow: auto;
+      border-bottom: 1px solid rgba(167, 183, 210, 0.10);
+    }}
+    .dashboard-page-header {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+    }}
+    .dashboard-page-header .eyebrow {{
+      margin-bottom: 6px;
+      color: var(--accent);
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }}
+    .dashboard-page-header h2 {{
+      margin: 0;
+      font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+      letter-spacing: -0.04em;
+    }}
+    .dashboard-page-header p {{
+      max-width: 70ch;
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }}
+    .dashboard-actions {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+    .dashboard-actions button {{
+      min-height: 38px;
+      padding: 8px 11px;
+      font-size: 0.74rem;
+    }}
+    .dashboard-live-badge, .dashboard-status-badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      padding: 7px 10px;
+      border: 1px solid rgba(124, 230, 195, 0.22);
+      border-radius: 999px;
+      background: rgba(124, 230, 195, 0.08);
+      color: var(--accent);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }}
+    .dashboard-status-badge {{
+      color: var(--text);
+      border-color: rgba(147, 169, 255, 0.25);
+      background: rgba(147, 169, 255, 0.09);
+    }}
+    .dashboard-live-dot {{
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px rgba(124, 230, 195, 0.12);
+    }}
+    .dashboard-status-banner {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 11px 13px;
+      border: 1px solid rgba(124, 230, 195, 0.18);
+      border-radius: 14px;
+      background: linear-gradient(90deg, rgba(124, 230, 195, 0.09), rgba(147, 169, 255, 0.055));
+    }}
+    .dashboard-status-copy {{
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }}
+    .dashboard-status-copy strong {{
+      font-size: 0.82rem;
+    }}
+    .dashboard-status-copy span {{
+      color: var(--muted);
+      font-size: 0.74rem;
+      line-height: 1.4;
+    }}
+    .dashboard-metrics {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }}
+    .dashboard-metric {{
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      padding: 13px 14px;
+      border: 1px solid rgba(167, 183, 210, 0.14);
+      border-radius: 15px;
+      background: rgba(17, 23, 34, 0.72);
+    }}
+    .dashboard-metric-label {{
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
+    .dashboard-metric strong {{
+      overflow: hidden;
+      color: var(--text);
+      font-size: 1.38rem;
+      letter-spacing: -0.04em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-metric small {{
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 0.68rem;
+      line-height: 1.35;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-columns {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+      gap: 12px;
+    }}
+    .dashboard-panel {{
+      display: grid;
+      align-content: start;
+      gap: 11px;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid rgba(167, 183, 210, 0.14);
+      border-radius: var(--radius-card);
+      background: rgba(17, 23, 34, 0.70);
+    }}
+    .dashboard-panel-header {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+    .dashboard-panel-kicker {{
+      color: var(--accent);
+      font-size: 0.58rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }}
+    .dashboard-panel h3 {{
+      margin: 3px 0 0;
+      font-size: 0.98rem;
+      letter-spacing: -0.02em;
+    }}
+    .dashboard-panel > p {{
+      margin: -4px 0 0;
+      color: var(--muted);
+      font-size: 0.75rem;
+      line-height: 1.45;
+    }}
+    .dashboard-runtime-chain {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }}
+    .dashboard-chain-step {{
+      position: relative;
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      padding: 11px;
+      border: 1px solid rgba(167, 183, 210, 0.13);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.035);
+    }}
+    .dashboard-chain-step:not(:last-child)::after {{
+      content: '→';
+      position: absolute;
+      top: 50%;
+      right: -14px;
+      z-index: 1;
+      color: var(--accent);
+      font-size: 0.9rem;
+      transform: translateY(-50%);
+    }}
+    .dashboard-chain-step span {{
+      color: var(--muted);
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
+    .dashboard-chain-step strong {{
+      overflow: hidden;
+      font-size: 0.78rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-panel-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }}
+    .dashboard-panel-actions button {{
+      min-height: 34px;
+      padding: 7px 10px;
+      font-size: 0.7rem;
+    }}
+    .dashboard-action-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }}
+    .dashboard-action {{
+      display: grid;
+      gap: 3px;
+      min-height: 64px;
+      padding: 10px;
+      border: 1px solid rgba(167, 183, 210, 0.14);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--text);
+      box-shadow: none;
+      text-align: left;
+    }}
+    .dashboard-action strong {{
+      font-size: 0.76rem;
+    }}
+    .dashboard-action span {{
+      color: var(--muted);
+      font-size: 0.67rem;
+      line-height: 1.35;
+    }}
+    .dashboard-action:hover:not(:disabled) {{
+      border-color: rgba(124, 230, 195, 0.34);
+      background: rgba(124, 230, 195, 0.08);
+      transform: translateY(-1px);
+    }}
+    .dashboard-activity-list, .dashboard-resource-list {{
+      display: grid;
+      gap: 6px;
+    }}
+    .dashboard-activity-item, .dashboard-resource-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid rgba(167, 183, 210, 0.11);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.028);
+      color: var(--text);
+      text-align: left;
+    }}
+    .dashboard-activity-item:hover:not(:disabled), .dashboard-resource-row:hover:not(:disabled) {{
+      border-color: rgba(124, 230, 195, 0.28);
+      background: rgba(124, 230, 195, 0.06);
+      transform: none;
+    }}
+    .dashboard-activity-item strong, .dashboard-resource-row strong {{
+      display: block;
+      overflow: hidden;
+      font-size: 0.74rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-activity-item small, .dashboard-resource-row small {{
+      display: block;
+      overflow: hidden;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 0.64rem;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+    .dashboard-activity-item > span:last-child, .dashboard-resource-row > span:last-child {{
+      flex: 0 0 auto;
+      color: var(--accent);
+      font-size: 0.68rem;
+      font-weight: 800;
+    }}
+    .dashboard-empty {{
+      padding: 11px;
+      border: 1px dashed rgba(167, 183, 210, 0.18);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1.4;
+    }}
+    body[data-theme="light"] .dashboard-nav {{
+      background: rgba(255, 255, 255, 0.74);
+    }}
+    body[data-theme="light"] .dashboard-nav button:hover:not(:disabled), body[data-theme="light"] .dashboard-nav button.active {{
+      background: rgba(8, 127, 104, 0.08);
+    }}
+    body[data-theme="light"] .dashboard-metric, body[data-theme="light"] .dashboard-panel {{
+      background: rgba(255, 255, 255, 0.76);
+      box-shadow: 0 12px 30px rgba(48, 64, 91, 0.05);
+    }}
+    body[data-theme="light"] .dashboard-chain-step, body[data-theme="light"] .dashboard-action, body[data-theme="light"] .dashboard-activity-item, body[data-theme="light"] .dashboard-resource-row {{
+      background: rgba(242, 246, 250, 0.72);
+    }}
+    body[data-theme="light"] .dashboard-status-banner {{
+      background: linear-gradient(90deg, rgba(8, 127, 104, 0.08), rgba(66, 95, 202, 0.06));
+    }}
+    @media (max-width: 980px) {{
+      .dashboard-page-header {{
+        flex-direction: column;
+      }}
+      .dashboard-actions {{
+        justify-content: flex-start;
+      }}
+      .dashboard-columns {{
+        grid-template-columns: 1fr;
+      }}
+    }}
+    @media (max-width: 720px) {{
+      .dashboard-metrics {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      .dashboard-runtime-chain {{
+        grid-template-columns: 1fr;
+      }}
+      .dashboard-chain-step:not(:last-child)::after {{
+        content: '↓';
+        top: auto;
+        right: 50%;
+        bottom: -15px;
+        transform: translateX(50%);
+      }}
+      .dashboard-status-banner {{
+        align-items: flex-start;
+        flex-direction: column;
+      }}
+    }}
+    @media (max-width: 480px) {{
+      .dashboard-view {{
+        padding-right: 14px;
+        padding-left: 14px;
+      }}
+      .dashboard-metrics {{
+        grid-template-columns: 1fr;
+      }}
+      .dashboard-actions {{
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+      }}
+      .dashboard-actions > * {{
+        width: 100%;
+      }}
+      .dashboard-live-badge {{
+        grid-column: 1 / -1;
+        justify-content: center;
+      }}
+    }}
   </style>
 </head>
 <body>
+  <a class=\"skip-link\" href=\"#chat\">Skip to chat</a>
   <div class=\"app\" id=\"app\">
     <aside class=\"sidebar\">
       <div class=\"brand\">
         <h1>Qwen Gen Chat</h1>
         <p>Ready-to-use local chat interface driven by your qwen-gen settings.</p>
       </div>
+      <nav class=\"dashboard-nav\" aria-label=\"Workspace navigation\">
+        <div class=\"dashboard-nav-title\">Workspace</div>
+        <button type=\"button\" class=\"active\" aria-label=\"Dashboard\" title=\"Dashboard\" data-dashboard-target=\"dashboard-view\"><span>Dashboard</span><small>Overview</small></button>
+        <button type=\"button\" aria-label=\"Chat\" title=\"Chat\" data-dashboard-target=\"chat\"><span>Chat</span><small>Session</small></button>
+        <button type=\"button\" aria-label=\"Models\" title=\"Models\" data-dashboard-target=\"model-select\"><span>Models</span><small>Route</small></button>
+        <button type=\"button\" aria-label=\"Knowledge\" title=\"Knowledge\" data-dashboard-target=\"kb-query\"><span>Knowledge</span><small>RAG</small></button>
+        <button type=\"button\" aria-label=\"Agents\" title=\"Agents\" data-dashboard-target=\"agent-select\"><span>Agents</span><small>Presets</small></button>
+        <button type=\"button\" aria-label=\"Files\" title=\"Files\" data-dashboard-target=\"file-search\"><span>Files</span><small>Library</small></button>
+        <button type=\"button\" aria-label=\"Saved chats\" title=\"Saved chats\" data-dashboard-target=\"conversation-list\"><span>Saved chats</span><small>History</small></button>
+      </nav>
       <div class=\"workspace-hero\">
         <div>
           <div class=\"eyebrow\">Workspace overview</div>
@@ -10438,6 +12880,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             <button id=\"upload-files\" class=\"secondary\" type=\"button\">Upload files</button>
             <button id=\"clear-file-attachments\" class=\"secondary\" type=\"button\">Clear attachments</button>
           </div>
+          <div class=\"toolbar\">
+            <button id=\"file-select-visible\" class=\"secondary\" type=\"button\">Select visible</button>
+            <button id=\"file-clear-selection\" class=\"secondary\" type=\"button\">Clear selection</button>
+            <button id=\"file-delete-selected\" class=\"danger\" type=\"button\">Delete selected</button>
+          </div>
+          <div class=\"toolbar\">
+            <button id=\"file-clone-selected\" class=\"secondary\" type=\"button\">Clone selected</button>
+            <button id=\"file-export-selected\" class=\"secondary\" type=\"button\">Export selected</button>
+            <button id=\"file-tree-view\" class=\"secondary\" type=\"button\">Tree view</button>
+          </div>
           <div class=\"template-creator\">
             <input id=\"file-search\" type=\"search\" placeholder=\"Search files by name, tag, path, or content\">
             <button id=\"clear-file-search\" class=\"secondary\" type=\"button\">Clear</button>
@@ -10446,6 +12898,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             <button id=\"file-clone\" class=\"secondary\" type=\"button\">Clone</button>
           </div>
           <div class=\"hint\" id=\"selected-file-meta\">No attachments selected.</div>
+          <div class=\"hint\" id=\"file-selection-meta\">No files selected for library actions.</div>
           <div id=\"selected-file-chips\" class=\"chips\"></div>
           <select id=\"file-select\" multiple size=\"5\"></select>
         </div>
@@ -10517,6 +12970,105 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         <div class=\"status-pills\" id=\"status-pills\"></div>
         <div class=\"hint\" id=\"streaming-status\">Idle.</div>
       </header>
+      <section class=\"dashboard-view\" id=\"dashboard-view\" aria-labelledby=\"dashboard-title\">
+        <div class=\"dashboard-page-header\">
+          <div>
+            <div class=\"eyebrow\">Workspace dashboard</div>
+            <h2 id=\"dashboard-title\">Qwen Gen operations</h2>
+            <p>Monitor the local model route, fallback posture, saved work, and reusable resources from one calm overview.</p>
+          </div>
+          <div class=\"dashboard-actions\">
+            <span class=\"dashboard-live-badge\" id=\"dashboard-live-badge\"><span class=\"dashboard-live-dot\"></span>Local workspace</span>
+            <button id=\"dashboard-new-chat\" class=\"secondary\" type=\"button\">New chat</button>
+            <button id=\"dashboard-focus-chat\" class=\"secondary\" type=\"button\">Open chat</button>
+          </div>
+        </div>
+        <div class=\"dashboard-status-banner\" id=\"dashboard-status-banner\">
+          <div class=\"dashboard-status-copy\">
+            <strong id=\"dashboard-status-title\">Routing ready</strong>
+            <span id=\"dashboard-status-copy\">The workspace is ready to route prompts through the selected model.</span>
+          </div>
+          <span class=\"dashboard-status-badge\" id=\"dashboard-fallback-status\">Auto fallback: checking</span>
+        </div>
+        <div class=\"dashboard-metrics\" aria-label=\"Workspace metrics\">
+          <article class=\"dashboard-metric\">
+            <span class=\"dashboard-metric-label\">Models</span>
+            <strong id=\"dashboard-models-value\">0</strong>
+            <small id=\"dashboard-models-meta\">No routing targets yet</small>
+          </article>
+          <article class=\"dashboard-metric\">
+            <span class=\"dashboard-metric-label\">Providers</span>
+            <strong id=\"dashboard-providers-value\">0</strong>
+            <small id=\"dashboard-providers-meta\">Configured provider families</small>
+          </article>
+          <article class=\"dashboard-metric\">
+            <span class=\"dashboard-metric-label\">Saved chats</span>
+            <strong id=\"dashboard-chats-value\">0</strong>
+            <small id=\"dashboard-chats-meta\">Conversation history</small>
+          </article>
+          <article class=\"dashboard-metric\">
+            <span class=\"dashboard-metric-label\">Resources</span>
+            <strong id=\"dashboard-resources-value\">0</strong>
+            <small id=\"dashboard-resources-meta\">Files, knowledge, and presets</small>
+          </article>
+        </div>
+        <div class=\"dashboard-columns\">
+          <article class=\"dashboard-panel\">
+            <div class=\"dashboard-panel-header\">
+              <div>
+                <div class=\"dashboard-panel-kicker\">Runtime chain</div>
+                <h3>Models → fallback → chat</h3>
+              </div>
+              <span class=\"pill\" id=\"dashboard-primary-model\">No model selected</span>
+            </div>
+            <p id=\"dashboard-runtime-copy\">Select a configured model to begin a local session.</p>
+            <div class=\"dashboard-runtime-chain\">
+              <div class=\"dashboard-chain-step\"><span>Primary</span><strong id=\"dashboard-runtime-model\">Not selected</strong></div>
+              <div class=\"dashboard-chain-step\"><span>Router</span><strong id=\"dashboard-runtime-fallback\">Fallback checking</strong></div>
+              <div class=\"dashboard-chain-step\"><span>Session</span><strong id=\"dashboard-runtime-session\">Ready</strong></div>
+            </div>
+            <div class=\"dashboard-panel-actions\">
+              <button class=\"secondary\" type=\"button\" data-dashboard-target=\"model-select\">Manage models</button>
+              <button class=\"secondary\" type=\"button\" data-dashboard-target=\"provider-chips\">Inspect providers</button>
+            </div>
+          </article>
+          <article class=\"dashboard-panel\">
+            <div class=\"dashboard-panel-header\">
+              <div>
+                <div class=\"dashboard-panel-kicker\">Command center</div>
+                <h3>Quick actions</h3>
+              </div>
+            </div>
+            <div class=\"dashboard-action-grid\">
+              <button class=\"dashboard-action\" type=\"button\" data-dashboard-target=\"prompt\"><strong>Start a chat</strong><span>Focus the composer and send a prompt.</span></button>
+              <button class=\"dashboard-action\" type=\"button\" data-dashboard-target=\"kb-query\"><strong>Search knowledge</strong><span>Query registered RAG sources.</span></button>
+              <button class=\"dashboard-action\" type=\"button\" data-dashboard-target=\"agent-select\"><strong>Use an agent</strong><span>Apply a reusable agent preset.</span></button>
+              <button class=\"dashboard-action\" type=\"button\" data-dashboard-target=\"file-search\"><strong>Open files</strong><span>Browse attachments and workspace files.</span></button>
+            </div>
+          </article>
+        </div>
+        <div class=\"dashboard-columns\">
+          <article class=\"dashboard-panel\">
+            <div class=\"dashboard-panel-header\">
+              <div>
+                <div class=\"dashboard-panel-kicker\">Activity</div>
+                <h3>Recent sessions</h3>
+              </div>
+              <button class=\"secondary\" type=\"button\" data-dashboard-target=\"conversation-list\">View all</button>
+            </div>
+            <div class=\"dashboard-activity-list\" id=\"dashboard-recent-chats\"></div>
+          </article>
+          <article class=\"dashboard-panel\">
+            <div class=\"dashboard-panel-header\">
+              <div>
+                <div class=\"dashboard-panel-kicker\">Workspace inventory</div>
+                <h3>Resources</h3>
+              </div>
+            </div>
+            <div class=\"dashboard-resource-list\" id=\"dashboard-resource-list\"></div>
+          </article>
+        </div>
+      </section>
       <section class=\"chat\" id=\"chat\"></section>
       <button id=\"scroll-latest\" class=\"secondary scroll-latest\" type=\"button\">Latest</button>
       <section class=\"composer\">
@@ -10527,6 +13079,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
               <div class=\"stack\">
                 <div class=\"hint\">Enter to send, Shift+Enter for a new line, or drag/paste files here to upload.</div>
                 <div class=\"hint\" id=\"voice-status\">Voice input is unavailable.</div>
+                <div class=\"row\">
+                  <select id=\"voice-select\" class=\"voice-select\" aria-label=\"Read aloud voice\">
+                    <option value=\"\">Default voice</option>
+                  </select>
+                </div>
               </div>
               <div class=\"toolbar\">
                 <button id=\"dictate-button\" class=\"secondary voice-toggle\" type=\"button\">Dictate</button>
@@ -10537,6 +13094,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
           <div class=\"composer-strip\">
             <div class=\"hint\" id=\"queue-status\">No queued messages.</div>
           </div>
+          <div id=\"composer-state\" class=\"composer-state\"></div>
         </form>
       </section>
     </main>
@@ -10599,6 +13157,21 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       </footer>
     </section>
   </div>
+  <div id=\"source-preview-backdrop\" class=\"file-preview-backdrop\" aria-hidden=\"true\">
+    <section class=\"file-preview\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"source-preview-title\">
+      <header>
+        <div>
+          <h3 id=\"source-preview-title\">Source preview</h3>
+          <div class=\"meta\" id=\"source-preview-meta\"></div>
+        </div>
+        <button id=\"close-source-preview\" class=\"secondary\" type=\"button\">Close</button>
+      </header>
+      <main id=\"source-preview-body\"></main>
+      <footer>
+        <button id=\"copy-source-preview\" class=\"secondary\" type=\"button\">Copy details</button>
+      </footer>
+    </section>
+  </div>
   <div id=\"shortcuts-backdrop\" class=\"shortcuts-backdrop\" aria-hidden=\"true\">
     <section class=\"shortcuts-dialog\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"shortcuts-title\">
       <header>
@@ -10658,6 +13231,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       webSearchResults: [],
       files: bootstrap.files || [],
       selectedFileId: localStorage.getItem('qwen-gen.chat.fileId') || '',
+      selectedFileIds: (() => {{
+        try {{
+          const raw = localStorage.getItem('qwen-gen.chat.fileSelection') || '[]';
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+        }} catch (err) {{
+          return [];
+        }}
+      }})(),
+      fileTreeView: localStorage.getItem('qwen-gen.chat.fileTreeView') !== '0',
       webSearchQuery: localStorage.getItem('qwen-gen.chat.webSearchQuery') || '',
       webSearchProvider: localStorage.getItem('qwen-gen.chat.webSearchProvider') || 'duckduckgo',
       webSearchFallback: localStorage.getItem('qwen-gen.chat.webSearchFallback') || '',
@@ -10672,12 +13255,13 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       compareEnabled: localStorage.getItem('qwen-gen.chat.compareEnabled') === '1',
       compareModel: localStorage.getItem('qwen-gen.chat.compareModel') || '',
       conversationFilter: localStorage.getItem('qwen-gen.chat.filter') || 'all',
-      sidebarCollapsed: localStorage.getItem('qwen-gen.chat.sidebarCollapsed') !== '0',
+      sidebarCollapsed: localStorage.getItem('qwen-gen.chat.sidebarPreference') === 'collapsed',
       themeMode: localStorage.getItem('qwen-gen.chat.themeMode') || 'dark',
       templateDrawerOpen: false,
       templateSearch: localStorage.getItem('qwen-gen.chat.templateSearch') || '',
       templateFilter: localStorage.getItem('qwen-gen.chat.templateFilter') || 'all',
       templateCompareId: localStorage.getItem('qwen-gen.chat.templateCompareId') || '',
+      voiceSpeakVoice: localStorage.getItem('qwen-gen.chat.voiceSpeakVoice') || '',
       voiceListening: false,
       voiceRecognitionSupported: Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
       messageSearchIndex: 0,
@@ -10689,6 +13273,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       themeToggle: document.getElementById('theme-toggle'),
       newChatHeader: document.getElementById('new-chat-header'),
       dictateButton: document.getElementById('dictate-button'),
+      voiceSelect: document.getElementById('voice-select'),
       compareToggle: document.getElementById('compare-model-toggle'),
       compareModelSelect: document.getElementById('compare-model-select'),
       addProviderPresets: document.getElementById('add-provider-presets'),
@@ -10742,6 +13327,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       fileImport: document.getElementById('file-import'),
       fileExport: document.getElementById('file-export'),
       fileClone: document.getElementById('file-clone'),
+      fileSelectVisible: document.getElementById('file-select-visible'),
+      fileClearSelection: document.getElementById('file-clear-selection'),
+      fileDeleteSelected: document.getElementById('file-delete-selected'),
+      fileCloneSelected: document.getElementById('file-clone-selected'),
+      fileExportSelected: document.getElementById('file-export-selected'),
       agentImportFile: document.getElementById('agent-import-file'),
       agentImport: document.getElementById('agent-import'),
       agentExport: document.getElementById('agent-export'),
@@ -10860,6 +13450,28 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       workspaceModelCount: document.getElementById('workspace-model-count'),
       workspaceTemplateCount: document.getElementById('workspace-template-count'),
       workspaceChatCount: document.getElementById('workspace-chat-count'),
+      dashboardView: document.getElementById('dashboard-view'),
+      dashboardLiveBadge: document.getElementById('dashboard-live-badge'),
+      dashboardStatusTitle: document.getElementById('dashboard-status-title'),
+      dashboardStatusCopy: document.getElementById('dashboard-status-copy'),
+      dashboardFallbackStatus: document.getElementById('dashboard-fallback-status'),
+      dashboardModelsValue: document.getElementById('dashboard-models-value'),
+      dashboardModelsMeta: document.getElementById('dashboard-models-meta'),
+      dashboardProvidersValue: document.getElementById('dashboard-providers-value'),
+      dashboardProvidersMeta: document.getElementById('dashboard-providers-meta'),
+      dashboardChatsValue: document.getElementById('dashboard-chats-value'),
+      dashboardChatsMeta: document.getElementById('dashboard-chats-meta'),
+      dashboardResourcesValue: document.getElementById('dashboard-resources-value'),
+      dashboardResourcesMeta: document.getElementById('dashboard-resources-meta'),
+      dashboardPrimaryModel: document.getElementById('dashboard-primary-model'),
+      dashboardRuntimeCopy: document.getElementById('dashboard-runtime-copy'),
+      dashboardRuntimeModel: document.getElementById('dashboard-runtime-model'),
+      dashboardRuntimeFallback: document.getElementById('dashboard-runtime-fallback'),
+      dashboardRuntimeSession: document.getElementById('dashboard-runtime-session'),
+      dashboardRecentChats: document.getElementById('dashboard-recent-chats'),
+      dashboardResourceList: document.getElementById('dashboard-resource-list'),
+      dashboardNewChat: document.getElementById('dashboard-new-chat'),
+      dashboardFocusChat: document.getElementById('dashboard-focus-chat'),
       prompt: document.getElementById('prompt'),
       systemPrompt: document.getElementById('system-prompt'),
       templateName: document.getElementById('template-name'),
@@ -10873,8 +13485,10 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       fileUpload: document.getElementById('file-upload'),
       uploadFiles: document.getElementById('upload-files'),
       clearFileAttachments: document.getElementById('clear-file-attachments'),
+      fileTreeView: document.getElementById('file-tree-view'),
       selectedFileChips: document.getElementById('selected-file-chips'),
       selectedFileMeta: document.getElementById('selected-file-meta'),
+      fileSelectionMeta: document.getElementById('file-selection-meta'),
       conversationTitle: document.getElementById('conversation-title'),
       conversationSearch: document.getElementById('conversation-search'),
       conversationFilterAll: document.getElementById('conversation-filter-all'),
@@ -10913,6 +13527,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       filePreviewBody: document.getElementById('file-preview-body'),
       closeFilePreview: document.getElementById('close-file-preview'),
       copyFilePreview: document.getElementById('copy-file-preview'),
+      sourcePreviewBackdrop: document.getElementById('source-preview-backdrop'),
+      sourcePreviewTitle: document.getElementById('source-preview-title'),
+      sourcePreviewMeta: document.getElementById('source-preview-meta'),
+      sourcePreviewBody: document.getElementById('source-preview-body'),
+      closeSourcePreview: document.getElementById('close-source-preview'),
+      copySourcePreview: document.getElementById('copy-source-preview'),
       shortcutsBackdrop: document.getElementById('shortcuts-backdrop'),
       shortcutsHelp: document.getElementById('shortcuts-help'),
       closeShortcuts: document.getElementById('close-shortcuts'),
@@ -10933,6 +13553,8 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       stopChat: document.getElementById('stop-chat'),
       saveTemplate: document.getElementById('save-template'),
       resetTemplate: document.getElementById('reset-template'),
+      composerState: document.getElementById('composer-state'),
+      sendButton: document.getElementById('send-button'),
     }};
     let activeAbortController = null;
     let editingMessageIndex = null;
@@ -10951,6 +13573,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     let dragDepth = 0;
     let pasteDepth = 0;
     let previewFile = null;
+    let previewSource = null;
     function save() {{
       localStorage.setItem('qwen-gen.chat.activeId', state.activeId || '');
       localStorage.setItem('qwen-gen.chat.model', state.currentModel || '');
@@ -10964,6 +13587,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       localStorage.setItem('qwen-gen.chat.templateSearch', state.templateSearch || '');
       localStorage.setItem('qwen-gen.chat.templateFilter', state.templateFilter || 'all');
       localStorage.setItem('qwen-gen.chat.templateCompareId', state.templateCompareId || '');
+      localStorage.setItem('qwen-gen.chat.voiceSpeakVoice', state.voiceSpeakVoice || '');
       localStorage.setItem('qwen-gen.chat.webSearchQuery', state.webSearchQuery || '');
       localStorage.setItem('qwen-gen.chat.webSearchProvider', state.webSearchProvider || 'duckduckgo');
       localStorage.setItem('qwen-gen.chat.webSearchFallback', state.webSearchFallback || '');
@@ -10973,9 +13597,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       localStorage.setItem('qwen-gen.chat.webSearchDescription', state.webSearchDescription || '');
       localStorage.setItem('qwen-gen.chat.webSearchSaveLimit', String(state.webSearchSaveLimit || 5));
       localStorage.setItem('qwen-gen.chat.fileSearch', state.fileSearch || '');
+      localStorage.setItem('qwen-gen.chat.fileSelection', JSON.stringify(state.selectedFileIds || []));
+      localStorage.setItem('qwen-gen.chat.fileTreeView', state.fileTreeView ? '1' : '0');
     }}
     function setSidebarCollapsed(collapsed) {{
       state.sidebarCollapsed = Boolean(collapsed);
+      localStorage.setItem('qwen-gen.chat.sidebarPreference', state.sidebarCollapsed ? 'collapsed' : 'expanded');
       els.app.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
       if (els.toggleSidebar) {{
         els.toggleSidebar.textContent = state.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
@@ -11002,13 +13629,47 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     }}
     function renderVoiceControls() {{
       if (!els.dictateButton || !els.voiceStatus) return;
+      if (els.voiceSelect) {{
+        const voices = availableSpeechVoices();
+        const current = state.voiceSpeakVoice || '';
+        const options = ['<option value=\"\">Default voice</option>'];
+        for (const voice of voices) {{
+          const label = [
+            voice.name || 'Voice',
+            voice.lang || '',
+            voice.default ? 'default' : '',
+          ].filter(Boolean).join(' · ');
+          const value = voice.voiceURI || voice.name || label;
+          options.push(`<option value=\"${{escapeHtml(value)}}\">${{escapeHtml(label)}}</option>`);
+        }}
+        els.voiceSelect.innerHTML = options.join('');
+        if ([...els.voiceSelect.options].some((option) => option.value === current)) {{
+          els.voiceSelect.value = current;
+        }} else if (!options.length) {{
+          els.voiceSelect.value = '';
+        }}
+        els.voiceSelect.disabled = !state.voiceRecognitionSupported || !voices.length;
+      }}
       els.dictateButton.disabled = !state.voiceRecognitionSupported;
       els.dictateButton.textContent = state.voiceListening ? 'Stop dictation' : 'Dictate';
       els.voiceStatus.textContent = state.voiceRecognitionSupported
         ? (state.voiceListening
           ? 'Listening for speech input.'
-          : 'Voice input is ready.')
+          : 'Voice input is ready. Choose a read-aloud voice or use the browser default.')
         : 'Voice input is unavailable in this browser.';
+    }}
+    function availableSpeechVoices() {{
+      if (!('speechSynthesis' in window)) return [];
+      return Array.isArray(window.speechSynthesis.getVoices()) ? window.speechSynthesis.getVoices() : [];
+    }}
+    function selectedSpeechVoice() {{
+      const voices = availableSpeechVoices();
+      const selected = String(state.voiceSpeakVoice || '').trim();
+      if (selected) {{
+        const match = voices.find((voice) => String(voice.voiceURI || voice.name || '') === selected);
+        if (match) return match;
+      }}
+      return voices.find((voice) => voice.default) || voices[0] || null;
     }}
     function ensureVoiceRecognition() {{
       if (window.__qwenVoiceRecognition) return window.__qwenVoiceRecognition;
@@ -11083,6 +13744,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(content);
       utterance.lang = navigator.language || 'en-US';
+      const voice = selectedSpeechVoice();
+      if (voice) {{
+        utterance.voice = voice;
+        if (voice.lang) utterance.lang = voice.lang;
+      }}
       window.speechSynthesis.speak(utterance);
     }}
     function setStreaming(active) {{
@@ -11590,7 +14256,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     }}
     function textToList(value) {{
       return String(value || '')
-        .split(/[\n,]/)
+        .split(/[\\n,]/)
         .map((entry) => entry.trim())
         .filter(Boolean);
     }}
@@ -12789,10 +15455,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       els.statusPills.innerHTML = '';
       const convo = activeConversation();
       const pills = [];
+      const primaryModel = convo?.model || state.currentModel || bootstrap.selectedModel || '';
+      const compareModelMatchesPrimary = !!state.compareEnabled && !!state.compareModel && state.compareModel === primaryModel;
       if (activeAbortController) {{
         pills.push({{ label: 'Stream', value: 'live' }});
       }}
-      pills.push({{ label: 'Model', value: convo?.model || state.currentModel || bootstrap.selectedModel || 'not set' }});
+      pills.push({{ label: 'Model', value: primaryModel || 'not set' }});
       if (convo) {{
         pills.push({{ label: 'Pinned', value: convo.pinned ? 'yes' : 'no' }});
         pills.push({{ label: 'Archived', value: convo.archived ? 'yes' : 'no' }});
@@ -12806,7 +15474,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         pills.push({{ label: 'Agent', value: agent ? (agent.name || agent.id) : state.currentAgentId }});
       }}
       if (state.compareEnabled) {{
-        pills.push({{ label: 'Compare', value: state.compareModel || 'enabled' }});
+        pills.push({{ label: 'Compare', value: compareModelMatchesPrimary ? 'needs different model' : (state.compareModel || 'enabled') }});
       }}
       pills.push({{ label: 'Files', value: String(selectedFiles().length) }});
       for (const pill of pills) {{
@@ -13050,6 +15718,298 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     function selectedFiles() {{
       return Array.from(els.fileSelect.selectedOptions).map((option) => option.value);
     }}
+    function selectedFileIds() {{
+      return Array.from(new Set((state.selectedFileIds || []).map((value) => String(value)))).filter(Boolean);
+    }}
+    function setSelectedFileIds(fileIds) {{
+      state.selectedFileIds = Array.from(new Set((fileIds || []).map((value) => String(value)))).filter(Boolean);
+      save();
+      renderFiles();
+    }}
+    function visibleFileRecords() {{
+      const query = String(state.fileSearch || '').trim().toLowerCase();
+      return (state.files || []).filter((file) => {{
+        if (!query) return true;
+        return [file.id, file.name, file.kind, file.path, file.description, file.content]
+          .filter(Boolean)
+          .some((value) => String(value).toLowerCase().includes(query))
+          || (Array.isArray(file.tags) && file.tags.some((tag) => String(tag).toLowerCase().includes(query)));
+      }});
+    }}
+    function selectedFileRecords() {{
+      const ids = new Set(selectedFileIds());
+      return (state.files || []).filter((file) => ids.has(String(file.id || '')));
+    }}
+    function selectVisibleFiles() {{
+      setSelectedFileIds(visibleFileRecords().map((file) => file.id).filter(Boolean));
+    }}
+    function clearSelectedFileSelection() {{
+      setSelectedFileIds([]);
+    }}
+    async function exportSelectedFilesToFile() {{
+      const files = selectedFileRecords();
+      if (!files.length) {{
+        window.alert('Select one or more files first.');
+        return;
+      }}
+      downloadText('selected-files.json', JSON.stringify({{ files }}, null, 2) + '\\n', 'application/json;charset=utf-8');
+    }}
+    async function cloneSelectedFiles() {{
+      const files = selectedFileRecords();
+      if (!files.length) {{
+        window.alert('Select one or more files first.');
+        return;
+      }}
+      const clonedIds = [];
+      for (const file of files) {{
+        const response = await fetch('/api/ai/files', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{ action: 'clone', id: file.id }}),
+        }});
+        if (!response.ok) {{
+          const data = await response.json().catch(() => ({{}}));
+          throw new Error(data.error || response.statusText || 'File clone failed');
+        }}
+        const data = await response.json();
+        if (data.data && data.data.file && data.data.file.id) {{
+          clonedIds.push(data.data.file.id);
+        }}
+      }}
+      await refreshFiles();
+      setSelectedFileIds(clonedIds);
+      if (clonedIds.length) {{
+        state.selectedFileId = clonedIds[0];
+      }}
+      renderAll();
+    }}
+    async function deleteSelectedFiles() {{
+      const files = selectedFileRecords();
+      if (!files.length) {{
+        window.alert('Select one or more files first.');
+        return;
+      }}
+      if (!window.confirm(`Delete ${{files.length}} selected file${{files.length === 1 ? '' : 's'}}?`)) return;
+      for (const file of files) {{
+        await deleteFile(file.id);
+      }}
+      clearSelectedFileSelection();
+      renderAll();
+    }}
+    function filePathParts(file) {{
+      const raw = String(file && (file.path || file.name || file.id) || '').replaceAll('\\\\', '/').trim();
+      if (!raw) return [];
+      return raw.split('/').map((part) => part.trim()).filter(Boolean);
+    }}
+    function fileTreeRoot(files) {{
+      const root = {{ name: '', path: '', dirs: new Map(), files: [] }};
+      for (const file of files || []) {{
+        const parts = filePathParts(file);
+        if (parts.length <= 1) {{
+          root.files.push(file);
+          continue;
+        }}
+        let node = root;
+        let currentPath = '';
+        for (const segment of parts.slice(0, -1)) {{
+          currentPath = currentPath ? `${{currentPath}}/${{segment}}` : segment;
+          if (!node.dirs.has(segment)) {{
+            node.dirs.set(segment, {{ name: segment, path: currentPath, dirs: new Map(), files: [] }});
+          }}
+          node = node.dirs.get(segment);
+        }}
+        node.files.push(file);
+      }}
+      return root;
+    }}
+    function sortFilesByPath(files) {{
+      return (files || []).slice().sort((a, b) => {{
+        const left = String((a && (a.path || a.name || a.id)) || '').toLowerCase();
+        const right = String((b && (b.path || b.name || b.id)) || '').toLowerCase();
+        return left.localeCompare(right);
+      }});
+    }}
+    function renderFileRow(file, selectedFile, librarySelection) {{
+      const row = document.createElement('div');
+      const isSelected = librarySelection.has(String(file.id || ''));
+      row.className = 'file-item' + (isSelected ? ' selected' : '');
+      const selectToggle = document.createElement('button');
+      selectToggle.type = 'button';
+      selectToggle.className = 'secondary select-toggle';
+      selectToggle.textContent = isSelected ? 'Selected' : 'Select';
+      selectToggle.title = isSelected
+        ? 'Remove file from the library selection.'
+        : 'Add file to the library selection.';
+      selectToggle.addEventListener('click', (event) => {{
+        event.stopPropagation();
+        const next = new Set(selectedFileIds());
+        if (next.has(file.id)) {{
+          next.delete(file.id);
+        }} else {{
+          next.add(file.id);
+        }}
+        setSelectedFileIds(Array.from(next));
+      }});
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip' + (String(file.id || '') === String(selectedFile.id || '') ? ' active' : '');
+      chip.textContent = file.name || file.id;
+      chip.title = fileSummary(file) || file.description || file.kind || file.id;
+      chip.addEventListener('click', () => {{
+        state.selectedFileId = file.id || '';
+        const next = new Set(selectedFiles());
+        if (next.has(file.id)) {{
+          next.delete(file.id);
+        }} else {{
+          next.add(file.id);
+        }}
+        setSelectedFiles(Array.from(next));
+        persistActiveFields();
+        renderAll();
+      }});
+      const preview = document.createElement('button');
+      preview.type = 'button';
+      preview.className = 'secondary';
+      preview.title = 'Preview file';
+      preview.textContent = 'Preview';
+      preview.addEventListener('click', (event) => {{
+        event.stopPropagation();
+        state.selectedFileId = file.id || '';
+        openFilePreview(file.id);
+      }});
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'danger';
+      remove.title = 'Delete file';
+      remove.textContent = '×';
+      remove.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        if (window.confirm(`Delete ${{file.name || file.id}}?`)) {{
+          try {{
+            await deleteFile(file.id);
+          }} catch (err) {{
+            window.alert(String(err.message || err));
+          }}
+        }}
+      }});
+      const shareMd = document.createElement('button');
+      shareMd.type = 'button';
+      shareMd.className = 'secondary';
+      shareMd.textContent = 'Share MD';
+      shareMd.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        await downloadSharedItem('files', file, 'md');
+      }});
+      const shareHtml = document.createElement('button');
+      shareHtml.type = 'button';
+      shareHtml.className = 'secondary';
+      shareHtml.textContent = 'Share HTML';
+      shareHtml.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        await downloadSharedItem('files', file, 'html');
+      }});
+      const shareJson = document.createElement('button');
+      shareJson.type = 'button';
+      shareJson.className = 'secondary';
+      shareJson.textContent = 'Share JSON';
+      shareJson.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        await downloadSharedItem('files', file, 'json');
+      }});
+      const clone = document.createElement('button');
+      clone.type = 'button';
+      clone.className = 'secondary';
+      clone.textContent = 'Clone';
+      clone.title = 'Clone file';
+      clone.addEventListener('click', async (event) => {{
+        event.stopPropagation();
+        state.selectedFileId = file.id || '';
+        try {{
+          const response = await fetch('/api/ai/files', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ action: 'clone', id: file.id }}),
+          }});
+          if (!response.ok) {{
+            const data = await response.json().catch(() => ({{}}));
+            throw new Error(data.error || response.statusText || 'File clone failed');
+          }}
+          const data = await response.json();
+          await refreshFiles();
+          state.selectedFileId = data.data && data.data.file && data.data.file.id ? data.data.file.id : state.selectedFileId;
+          renderAll();
+        }} catch (err) {{
+          window.alert(String(err.message || err));
+        }}
+      }});
+      row.appendChild(selectToggle);
+      row.appendChild(chip);
+      row.appendChild(preview);
+      row.appendChild(remove);
+      row.appendChild(shareMd);
+      row.appendChild(shareHtml);
+      row.appendChild(shareJson);
+      row.appendChild(clone);
+      row.appendChild(document.createElement('div')).textContent = fileSummary(file) || file.description || 'File';
+      return row;
+    }}
+    function renderFileTree(container, tree, selectedFile, librarySelection, depth = 0) {{
+      const directoryEntries = Array.from(tree.dirs.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const fileEntries = sortFilesByPath(tree.files);
+      for (const dir of directoryEntries) {{
+        const details = document.createElement('details');
+        details.className = 'file-tree-dir';
+        details.open = depth < 1;
+        const summary = document.createElement('summary');
+        summary.className = 'file-tree-summary';
+        summary.textContent = dir.name;
+        const meta = document.createElement('span');
+        meta.className = 'muted';
+        const childCount = (dir.files ? dir.files.length : 0) + (dir.dirs ? dir.dirs.size : 0);
+        meta.textContent = `${{childCount}} item${{childCount === 1 ? '' : 's'}}`;
+        summary.appendChild(meta);
+        const body = document.createElement('div');
+        body.className = 'file-tree-children';
+        renderFileTree(body, dir, selectedFile, librarySelection, depth + 1);
+        details.appendChild(summary);
+        details.appendChild(body);
+        container.appendChild(details);
+      }}
+      for (const file of fileEntries) {{
+        const row = renderFileRow(file, selectedFile, librarySelection);
+        row.style.marginLeft = depth ? `${{depth * 14}}px` : '0';
+        container.appendChild(row);
+      }}
+    }}
+    function conversationSnippet(convo) {{
+      const messages = Array.isArray(convo.messages) ? convo.messages : [];
+      const lastMessage = messages.length ? messages[messages.length - 1] : null;
+      const preview = lastMessage && lastMessage.content ? String(lastMessage.content).trim().replace(/\\s+/g, ' ') : '';
+      const snippet = preview.length > 140 ? `${{preview.slice(0, 137)}}...` : preview;
+      const parts = [
+        `${{messages.length}} message${{messages.length === 1 ? '' : 's'}}`,
+        convo.folderId ? `workspace: ${{folderLabel(convo.folderId)}}` : '',
+        convo.pinned ? 'pinned' : '',
+        convo.archived ? 'archived' : '',
+        convo.model || bootstrap.selectedModel || '',
+        convo.systemPrompt ? 'prompt' : '',
+        convo.files && convo.files.length ? `${{convo.files.length}} file${{convo.files.length === 1 ? '' : 's'}}` : '',
+      ].filter(Boolean);
+      return {{
+        summary: parts.join(' · '),
+        snippet: snippet || (lastMessage ? `${{lastMessage.role || 'assistant'}} message` : 'Empty transcript'),
+      }};
+    }}
+    function conversationContextStart(convo) {{
+      const raw = Number(convo && convo.clearContextIndex);
+      if (!Number.isFinite(raw) || raw < 0) return 0;
+      return Math.floor(raw);
+    }}
+    function conversationContextMessages(convo) {{
+      const messages = Array.isArray(convo && convo.messages) ? convo.messages : [];
+      const start = conversationContextStart(convo);
+      return start > 0 ? messages.slice(start) : messages.slice();
+    }}
     function extensionForFile(name) {{
       const parts = String(name || '').split('.');
       return parts.length > 1 ? parts.pop().toLowerCase() : '';
@@ -13060,15 +16020,39 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (ext) return ext;
       return 'file';
     }}
+    async function isLikelyTextFile(file) {{
+      try {{
+        const chunk = await file.slice(0, 8192).arrayBuffer();
+        const bytes = new Uint8Array(chunk);
+        if (!bytes.length) return false;
+        if (bytes.includes(0)) return false;
+        new TextDecoder('utf-8', {{ fatal: true }}).decode(bytes);
+        return true;
+      }} catch (err) {{
+        return false;
+      }}
+    }}
     function readLocalFile(file) {{
       return new Promise((resolve, reject) => {{
         const reader = new FileReader();
         reader.onerror = () => reject(new Error(`Unable to read ${{file.name}}`));
         reader.onload = () => resolve(reader.result);
-        if (file.type.startsWith('text/') || file.type === 'application/json' || file.type === 'application/xml') {{
+        if (
+          file.type.startsWith('text/') ||
+          file.type === 'application/json' ||
+          file.type === 'application/xml' ||
+          file.type === 'application/javascript' ||
+          file.type === 'application/typescript'
+        ) {{
           reader.readAsText(file);
         }} else {{
-          reader.readAsDataURL(file);
+          void isLikelyTextFile(file).then((textLike) => {{
+            if (textLike) {{
+              reader.readAsText(file);
+            }} else {{
+              reader.readAsDataURL(file);
+            }}
+          }});
         }}
       }});
     }}
@@ -13133,6 +16117,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (String(state.selectedFileId || '') === String(fileId || '')) {{
         state.selectedFileId = state.files[0]?.id || '';
       }}
+      state.selectedFileIds = selectedFileIds().filter((item) => String(item) !== String(fileId || ''));
       for (const convo of state.conversations) {{
         if (Array.isArray(convo.files)) {{
           convo.files = convo.files.filter((item) => item !== fileId);
@@ -13162,6 +16147,13 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       previewFile = null;
       els.filePreviewBackdrop.classList.remove('open');
       els.filePreviewBackdrop.setAttribute('aria-hidden', 'true');
+    }}
+    function closeSourcePreview() {{
+      previewSource = null;
+      if (els.sourcePreviewBackdrop) {{
+        els.sourcePreviewBackdrop.classList.remove('open');
+        els.sourcePreviewBackdrop.setAttribute('aria-hidden', 'true');
+      }}
     }}
     function openShortcutsHelp() {{
       els.shortcutsBackdrop.classList.add('open');
@@ -13201,6 +16193,45 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       }}
       els.filePreviewBackdrop.classList.add('open');
       els.filePreviewBackdrop.setAttribute('aria-hidden', 'false');
+    }}
+    function describeSource(source) {{
+      const title = String(source && (source.title || source.name || source.label || source.id || 'Source')).trim();
+      const url = String(source && (source.url || source.href || source.link || '')).trim();
+      const details = [];
+      if (source && typeof source === 'object') {{
+        for (const key of ['snippet', 'content', 'text', 'description']) {{
+          if (typeof source[key] === 'string' && source[key].trim()) {{
+            details.push(`${{key}}: ${{source[key].trim()}}`);
+          }}
+        }}
+      }}
+      return {{ title, url, details: details.join('\\n\\n') }};
+    }}
+    function openSourcePreview(source) {{
+      if (!source || !els.sourcePreviewBackdrop) return;
+      previewSource = source;
+      const details = describeSource(source);
+      if (els.sourcePreviewTitle) els.sourcePreviewTitle.textContent = details.title || 'Source preview';
+      if (els.sourcePreviewMeta) {{
+        els.sourcePreviewMeta.textContent = details.url
+          ? details.url
+          : (source.id ? `Source id: ${{source.id}}` : 'Assistant source reference');
+      }}
+      const parts = [];
+      if (details.url) {{
+        parts.push(`<div class=\"resource-item\"><strong>URL</strong><div class=\"muted\">${{escapeHtml(details.url)}}</div></div>`);
+      }}
+      if (details.details) {{
+        parts.push(`<pre>${{escapeHtml(details.details)}}</pre>`);
+      }}
+      if (source && typeof source === 'object') {{
+        parts.push(`<pre>${{escapeHtml(JSON.stringify(source, null, 2))}}</pre>`);
+      }}
+      if (els.sourcePreviewBody) {{
+        els.sourcePreviewBody.innerHTML = parts.join('') || '<div class=\"muted\">No additional source details available.</div>';
+      }}
+      els.sourcePreviewBackdrop.classList.add('open');
+      els.sourcePreviewBackdrop.setAttribute('aria-hidden', 'false');
     }}
     function persistActiveFields() {{
       const convo = activeConversation();
@@ -13293,6 +16324,20 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     function renderModels() {{
       els.modelSelect.innerHTML = '';
       els.compareModelSelect.innerHTML = '';
+      els.modelSelect.disabled = !state.models.length;
+      els.compareModelSelect.disabled = !state.models.length;
+      if (!state.models.length) {{
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'No models configured';
+        placeholder.selected = true;
+        els.modelSelect.appendChild(placeholder);
+        els.compareModelSelect.appendChild(placeholder.cloneNode(true));
+        state.currentModel = '';
+        state.compareModel = '';
+        return;
+      }}
+      const primaryModelId = els.modelSelect.value || state.currentModel || bootstrap.selectedModel || '';
       for (const model of state.models) {{
         const opt = document.createElement('option');
         opt.value = model.id;
@@ -13302,7 +16347,10 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
 
         const compareOpt = document.createElement('option');
         compareOpt.value = model.id;
-        compareOpt.textContent = `${{model.id}} — ${{model.providerName || model.provider}}`;
+        compareOpt.textContent = model.id === primaryModelId
+          ? `${{model.id}} — ${{model.providerName || model.provider}} (current model)`
+          : `${{model.id}} — ${{model.providerName || model.provider}}`;
+        compareOpt.disabled = model.id === primaryModelId;
         els.compareModelSelect.appendChild(compareOpt);
       }}
       if (!els.modelSelect.value && state.models.length) {{
@@ -13310,15 +16358,38 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       }}
       state.currentModel = els.modelSelect.value || state.currentModel;
       if (!els.compareModelSelect.value && state.models.length) {{
-        const fallback = state.models.find((model) => model.id !== els.modelSelect.value)?.id || state.models[1]?.id || state.models[0]?.id || '';
+        const fallback = state.models.find((model) => model.id !== (els.modelSelect.value || state.currentModel || bootstrap.selectedModel || ''))?.id || state.models[1]?.id || state.models[0]?.id || '';
         els.compareModelSelect.value = state.compareModel || fallback || '';
+      }}
+      if (els.compareModelSelect.value && els.compareModelSelect.value === (els.modelSelect.value || state.currentModel || bootstrap.selectedModel || '')) {{
+        const compareFallback = state.models.find((model) => model.id !== els.compareModelSelect.value)?.id || '';
+        els.compareModelSelect.value = compareFallback || '';
       }}
       state.compareModel = els.compareModelSelect.value || state.compareModel;
     }}
     function renderProviders() {{
       els.providerChips.innerHTML = '';
       if (!state.models.length) {{
-        els.providerChips.innerHTML = '<span class=\"muted\">No provider models configured.</span>';
+        els.providerChips.innerHTML = `
+          <div class=\"provider-empty\">
+            <strong>No provider models configured.</strong>
+            <p>Add presets to populate the model selector, compare mode, and workspace counts.</p>
+            <div class=\"toolbar\">
+              <button type=\"button\" class=\"secondary\" id=\"provider-empty-add\">Add presets</button>
+              <button type=\"button\" class=\"secondary\" id=\"provider-empty-refresh\">Refresh</button>
+            </div>
+          </div>
+        `;
+        els.providerChips.querySelector('#provider-empty-add')?.addEventListener('click', async () => {{
+          try {{
+            await addProviderPresets();
+          }} catch (err) {{
+            window.alert(String(err.message || err));
+          }}
+        }});
+        els.providerChips.querySelector('#provider-empty-refresh')?.addEventListener('click', () => {{
+          renderAll();
+        }});
         return;
       }}
       for (const model of state.models) {{
@@ -13354,6 +16425,77 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         row.appendChild(remove);
         els.providerChips.appendChild(row);
       }}
+    }}
+    function renderComposerState() {{
+      const hasModels = !!state.models.length;
+      const canCompare = state.models.length > 1;
+      const compareModelMatchesPrimary = !!state.compareEnabled && !!state.compareModel && state.compareModel === (els.modelSelect?.value || state.currentModel || bootstrap.selectedModel || '');
+      if (els.sendButton) {{
+        els.sendButton.disabled = !hasModels || compareModelMatchesPrimary;
+        els.sendButton.title = hasModels
+          ? (compareModelMatchesPrimary
+            ? 'Choose a different compare model before sending'
+            : 'Send the prompt to the selected model')
+          : 'Add a provider preset before sending a chat message';
+      }}
+      if (els.compareToggle) {{
+        els.compareToggle.disabled = !canCompare;
+        els.compareToggle.title = canCompare
+          ? 'Enable compare mode with a second model'
+          : 'Compare mode needs at least two configured models';
+      }}
+      if (!canCompare) {{
+        state.compareEnabled = false;
+        state.compareModel = '';
+        if (els.compareToggle) els.compareToggle.checked = false;
+        if (els.compareModelSelect) els.compareModelSelect.value = '';
+      }}
+      if (els.prompt) {{
+        els.prompt.placeholder = hasModels
+          ? 'Ask Qwen something...'
+          : 'Add a model first, then ask Qwen something...';
+      }}
+      if (hasModels && canCompare && !compareModelMatchesPrimary) {{
+        if (els.composerState) els.composerState.innerHTML = '';
+        return;
+      }}
+      if (!els.composerState) return;
+      els.composerState.innerHTML = compareModelMatchesPrimary
+        ? `
+          <strong>Compare mode needs a different second model.</strong>
+          <p>Choose another model in the compare selector so the prompt can be sent to two distinct backends.</p>
+          <div class=\"toolbar\">
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-add\">Add presets</button>
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-templates\">Templates</button>
+          </div>
+        `
+        : hasModels
+        ? `
+          <strong>Compare mode needs two models.</strong>
+          <p>Add one more provider preset to enable side-by-side comparison from the same composer.</p>
+          <div class=\"toolbar\">
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-add\">Add presets</button>
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-templates\">Templates</button>
+          </div>
+        `
+        : `
+          <strong>No model is selected yet.</strong>
+          <p>Add provider presets to populate the model list, then start a chat or compare two models from the same composer.</p>
+          <div class=\"toolbar\">
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-add\">Add presets</button>
+            <button type=\"button\" class=\"secondary\" id=\"composer-empty-templates\">Templates</button>
+          </div>
+        `;
+      els.composerState.querySelector('#composer-empty-add')?.addEventListener('click', async () => {{
+        try {{
+          await addProviderPresets();
+        }} catch (err) {{
+          window.alert(String(err.message || err));
+        }}
+      }});
+      els.composerState.querySelector('#composer-empty-templates')?.addEventListener('click', () => {{
+        setTemplateDrawerOpen(true);
+      }});
     }}
     function combinedPromptTemplates() {{
       return [
@@ -13415,17 +16557,17 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       const current = String(els.systemPrompt.value || '').trim();
       const candidate = String(template.content || '').trim();
       if (!current && !candidate) return 'No prompt content to compare.';
-      const currentLines = current.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-      const candidateLines = candidate.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+      const currentLines = current.split(/\\n+/).map((line) => line.trim()).filter(Boolean);
+      const candidateLines = candidate.split(/\\n+/).map((line) => line.trim()).filter(Boolean);
       const added = candidateLines.filter((line) => !currentLines.includes(line));
       const removed = currentLines.filter((line) => !candidateLines.includes(line));
       const shared = candidateLines.filter((line) => currentLines.includes(line));
       const parts = [];
       parts.push(`Shared lines: ${{shared.length}}`);
-      if (added.length) parts.push(`Added preview:\n${{added.slice(0, 6).map((line) => `+ ${{line}}`).join('\n')}}`);
-      if (removed.length) parts.push(`Removed preview:\n${{removed.slice(0, 6).map((line) => `- ${{line}}`).join('\n')}}`);
+      if (added.length) parts.push(`Added preview:\\n${{added.slice(0, 6).map((line) => `+ ${{line}}`).join('\\n')}}`);
+      if (removed.length) parts.push(`Removed preview:\\n${{removed.slice(0, 6).map((line) => `- ${{line}}`).join('\\n')}}`);
       if (!added.length && !removed.length) parts.push('The selected template matches the current prompt.');
-      return parts.join('\n\n');
+      return parts.join('\\n\\n');
     }}
     function setTemplateDrawerOpen(open) {{
       state.templateDrawerOpen = Boolean(open);
@@ -13789,14 +16931,21 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (els.fileSearch && els.fileSearch.value !== state.fileSearch) {{
         els.fileSearch.value = state.fileSearch || '';
       }}
-      const query = String(state.fileSearch || '').trim().toLowerCase();
-      const visibleFiles = (state.files || []).filter((file) => {{
-        if (!query) return true;
-        return [file.id, file.name, file.kind, file.path, file.description, file.content]
-          .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(query))
-          || (Array.isArray(file.tags) && file.tags.some((tag) => String(tag).toLowerCase().includes(query)));
-      }});
+      if (els.fileTreeView) {{
+        els.fileTreeView.textContent = state.fileTreeView ? 'Flat view' : 'Tree view';
+        els.fileTreeView.classList.toggle('active', state.fileTreeView);
+        els.fileTreeView.setAttribute('aria-pressed', state.fileTreeView ? 'true' : 'false');
+      }}
+      if (els.fileChips) {{
+        els.fileChips.classList.toggle('file-tree', state.fileTreeView);
+      }}
+      const visibleFiles = visibleFileRecords();
+      const librarySelection = new Set(selectedFileIds());
+      if (els.fileSelectionMeta) {{
+        els.fileSelectionMeta.textContent = librarySelection.size
+          ? `${{librarySelection.size}} file${{librarySelection.size === 1 ? '' : 's'}} selected for library actions.`
+          : 'No files selected for library actions.';
+      }}
       if (!visibleFiles.length) {{
         els.fileChips.innerHTML = '<span class=\"muted\">No files in registry.</span>';
         els.selectedFileMeta.textContent = 'No attachments selected.';
@@ -13834,110 +16983,13 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         }});
         els.selectedFileChips.appendChild(chip);
       }}
+      if (state.fileTreeView) {{
+        const tree = fileTreeRoot(visibleFiles);
+        renderFileTree(els.fileChips, tree, selectedFile, librarySelection);
+        return;
+      }}
       for (const file of visibleFiles) {{
-        const row = document.createElement('div');
-        row.className = 'file-item';
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'chip' + (String(file.id || '') === String(selectedFile.id || '') ? ' active' : '');
-        chip.textContent = file.name || file.id;
-        chip.title = fileSummary(file) || file.description || file.kind || file.id;
-        chip.addEventListener('click', () => {{
-          state.selectedFileId = file.id || '';
-          const next = new Set(selectedFiles());
-          if (next.has(file.id)) {{
-            next.delete(file.id);
-          }} else {{
-            next.add(file.id);
-          }}
-          setSelectedFiles(Array.from(next));
-          persistActiveFields();
-          renderAll();
-        }});
-        const preview = document.createElement('button');
-        preview.type = 'button';
-        preview.className = 'secondary';
-        preview.title = 'Preview file';
-        preview.textContent = 'Preview';
-        preview.addEventListener('click', (event) => {{
-          event.stopPropagation();
-          state.selectedFileId = file.id || '';
-          openFilePreview(file.id);
-        }});
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'danger';
-        remove.title = 'Delete file';
-        remove.textContent = '×';
-        remove.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          if (window.confirm(`Delete ${{file.name || file.id}}?`)) {{
-            try {{
-              await deleteFile(file.id);
-            }} catch (err) {{
-              window.alert(String(err.message || err));
-            }}
-          }}
-        }});
-        const shareMd = document.createElement('button');
-        shareMd.type = 'button';
-        shareMd.className = 'secondary';
-        shareMd.textContent = 'Share MD';
-        shareMd.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          await downloadSharedItem('files', file, 'md');
-        }});
-        const shareHtml = document.createElement('button');
-        shareHtml.type = 'button';
-        shareHtml.className = 'secondary';
-        shareHtml.textContent = 'Share HTML';
-        shareHtml.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          await downloadSharedItem('files', file, 'html');
-        }});
-        const shareJson = document.createElement('button');
-        shareJson.type = 'button';
-        shareJson.className = 'secondary';
-        shareJson.textContent = 'Share JSON';
-        shareJson.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          await downloadSharedItem('files', file, 'json');
-        }});
-        row.appendChild(chip);
-        row.appendChild(preview);
-        row.appendChild(remove);
-        row.appendChild(shareMd);
-        row.appendChild(shareHtml);
-        row.appendChild(shareJson);
-        const clone = document.createElement('button');
-        clone.type = 'button';
-        clone.className = 'secondary';
-        clone.textContent = 'Clone';
-        clone.title = 'Clone file';
-        clone.addEventListener('click', async (event) => {{
-          event.stopPropagation();
-          state.selectedFileId = file.id || '';
-          try {{
-            const response = await fetch('/api/ai/files', {{
-              method: 'POST',
-              headers: {{ 'Content-Type': 'application/json' }},
-              body: JSON.stringify({{ action: 'clone', id: file.id }}),
-            }});
-            if (!response.ok) {{
-              const data = await response.json().catch(() => ({{}}));
-              throw new Error(data.error || response.statusText || 'File clone failed');
-            }}
-            const data = await response.json();
-            await refreshFiles();
-            state.selectedFileId = data.data && data.data.file && data.data.file.id ? data.data.file.id : state.selectedFileId;
-            renderAll();
-          }} catch (err) {{
-            window.alert(String(err.message || err));
-          }}
-        }});
-        row.appendChild(clone);
-        row.appendChild(document.createElement('div')).textContent = fileSummary(file) || file.description || 'File';
-        els.fileChips.appendChild(row);
+        els.fileChips.appendChild(renderFileRow(file, selectedFile, librarySelection));
       }}
     }}
     function renderConversationList() {{
@@ -13967,29 +17019,39 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         return String(a.title || a.id || '').localeCompare(String(b.title || b.id || ''));
       }});
       if (!visible.length) {{
-        els.conversationList.innerHTML = `<span class=\"muted\">${{query ? 'No chats match your search.' : 'No saved chats yet.'}}</span>`;
+        els.conversationList.innerHTML = `
+          <div class=\"conversation-empty\">
+            <strong>${{query ? 'No chats match your search.' : 'No saved chats yet.'}}</strong>
+            <p>${{query
+              ? 'Clear the search or start a new conversation to show items here again.'
+              : 'Create the first conversation, then pin, archive, export, or share it from here.'}}</p>
+            <div class=\"toolbar\">
+              <button type=\"button\" class=\"secondary\" id=\"conversation-empty-new\">New chat</button>
+              <button type=\"button\" class=\"secondary\" id=\"conversation-empty-templates\">Templates</button>
+            </div>
+          </div>
+        `;
+        els.conversationList.querySelector('#conversation-empty-new')?.addEventListener('click', () => {{
+          newConversation();
+          renderAll();
+        }});
+        els.conversationList.querySelector('#conversation-empty-templates')?.addEventListener('click', () => {{
+          setTemplateDrawerOpen(true);
+        }});
         return;
       }}
       for (const convo of visible) {{
         const item = document.createElement('div');
         item.className = 'conversation-item' + (convo.id === state.activeId ? ' active' : '');
-        const summary = [
-          convo.folderId ? `workspace: ${{folderLabel(convo.folderId)}}` : '',
-          convo.pinned ? 'pinned' : '',
-          convo.archived ? 'archived' : '',
-          convo.model || bootstrap.selectedModel || '',
-          convo.systemPrompt ? 'prompt' : '',
-          convo.files && convo.files.length ? `${{convo.files.length}} file(s)` : '',
-        ]
-          .filter(Boolean)
-          .join(' · ');
+        const details = conversationSnippet(convo);
         item.innerHTML = `
           <div class=\"conversation-item-body\">
             <div>
               <button type=\"button\" class=\"conversation-item-select\">
                 <strong>${{escapeHtml(convo.title || convo.id)}}</strong>
               </button>
-              <small>${{escapeHtml(summary || convo.id)}}</small>
+              <small>${{escapeHtml(details.summary || convo.id)}}</small>
+              <div class=\"conversation-item-snippet\">${{escapeHtml(details.snippet)}}</div>
             </div>
             <div class=\"conversation-item-actions\">
               <button type=\"button\" data-action=\"pin\">${{convo.pinned ? 'Unpin' : 'Pin'}}</button>
@@ -14052,6 +17114,19 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         .replace(/~~([^~]+)~~/g, '<del>$1</del>')
         .replace(/\\$(?!\\s)([^$\\n]+?)\\$(?!\\d)/g, '<span class=\"math\">$1</span>')
         .replace(
+          /\\[\\^([^\\]]+)\\]/g,
+          (_, footnoteId) =>
+            '<sup class=\"footnote-ref\"><a href=\"#footnote-' +
+            escapeHtml(String(footnoteId || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-')) +
+            '\">[' +
+            escapeHtml(String(footnoteId || '').trim()) +
+            ']</a></sup>'
+        )
+        .replace(
+          /\\[(\\d+)\\]/g,
+          '<button type=\"button\" class=\"citation\" data-citation-index=\"$1\">[$1]</button>'
+        )
+        .replace(
           /\\[([^\\]]+)\\]\\(([^)]+)\\)/g,
           (_, label, href) =>
             '<a href=\"' +
@@ -14059,7 +17134,89 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             '\" target=\"_blank\" rel=\"noreferrer\">' +
             label +
             '</a>'
-        );
+        )
+        .replace(/(^|[^\\w/])([@#$])([A-Za-z_][\\w.-]{{0,63}})/g, (_, prefix, sigil, token) => {{
+          const kind = sigil === '@' ? 'at' : (sigil === '#' ? 'hash' : 'dollar');
+          return prefix + '<span class=\"mention mention-' + kind + '\">' + sigil + token + '</span>';
+        }});
+    }}
+    function normalizeMessageSources(value) {{
+      if (!Array.isArray(value)) return [];
+      return value
+        .map((item, index) => {{
+          if (!item) return null;
+          if (typeof item === 'string') {{
+            const url = item.trim();
+            if (!url) return null;
+            return {{
+              id: `source-${{index + 1}}`,
+              title: url,
+              url,
+            }};
+          }}
+          if (typeof item === 'object') {{
+            const url = String(item.url || item.href || item.link || item.source || '').trim();
+            const title = String(item.title || item.name || item.label || item.id || url || `Source ${{index + 1}}`).trim();
+            const id = String(item.id || item.sourceId || item.reference || `source-${{index + 1}}`).trim();
+            if (!title && !url && !id) return null;
+            return {{
+              ...item,
+              id,
+              title: title || url || id,
+              url,
+            }};
+          }}
+          return null;
+        }})
+        .filter(Boolean);
+    }}
+    function extractMessageSources(payload) {{
+      if (!payload || typeof payload !== 'object') return [];
+      const message = payload && payload.choices && payload.choices[0] && payload.choices[0].message ? payload.choices[0].message : null;
+      return normalizeMessageSources(
+        (message && (message.sources || message.citations)) ||
+        payload.sources ||
+        payload.citations ||
+        payload.sourceIds ||
+        []
+      );
+    }}
+    function renderMessageSources(sources) {{
+      const normalized = normalizeMessageSources(sources);
+      if (!normalized.length) return null;
+      const section = document.createElement('div');
+      section.className = 'message-sources';
+      const title = document.createElement('div');
+      title.className = 'message-sources-title';
+      title.textContent = 'Sources';
+      const list = document.createElement('div');
+      list.className = 'message-sources-list';
+      normalized.forEach((source, index) => {{
+        const chip = document.createElement('button');
+        chip.className = 'message-source-chip';
+        chip.type = 'button';
+        chip.title = source.url ? 'Open source preview' : 'Inspect source reference';
+        chip.addEventListener('click', () => {{
+          openSourcePreview(source);
+        }});
+        const label = document.createElement('span');
+        label.textContent = source.title || source.id || `Source ${{index + 1}}`;
+        chip.appendChild(label);
+        if (source.url) {{
+          const meta = document.createElement('span');
+          meta.className = 'muted';
+          try {{
+            meta.textContent = new URL(source.url).hostname || source.url;
+          }} catch (err) {{
+            meta.textContent = source.url;
+          }}
+          chip.appendChild(meta);
+        }}
+        list.appendChild(chip);
+      }});
+      section.appendChild(title);
+      section.appendChild(list);
+      return section;
     }}
     function renderMarkdown(value) {{
       const source = String(value || '').replace(/\\r\\n/g, '\\n');
@@ -14074,6 +17231,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       let inTable = false;
       let tableHeader = [];
       let tableRows = [];
+      let inCallout = false;
+      let calloutTitle = '';
+      let calloutLines = [];
+      let pendingFootnoteId = '';
+      let pendingFootnoteLines = [];
+      const footnotes = [];
       const flushTable = () => {{
         if (!inTable) return;
         const headerHtml = tableHeader.map((cell) => '<th>' + renderInline(cell.trim()) + '</th>').join('');
@@ -14084,6 +17247,28 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         inTable = false;
         tableHeader = [];
         tableRows = [];
+      }};
+      const flushCallout = () => {{
+        if (!inCallout) return;
+        const body = calloutLines.length ? renderMarkdown(calloutLines.join('\\n')) : '';
+        blocks.push(
+          '<aside class=\"callout\">' +
+            '<div class=\"callout-title\">' + escapeHtml(calloutTitle || 'note') + '</div>' +
+            '<div class=\"callout-body\">' + body + '</div>' +
+          '</aside>'
+        );
+        inCallout = false;
+        calloutTitle = '';
+        calloutLines = [];
+      }};
+      const flushFootnote = () => {{
+        if (!pendingFootnoteId) return;
+        footnotes.push({{
+          id: pendingFootnoteId,
+          body: pendingFootnoteLines.join('\\n').trim(),
+        }});
+        pendingFootnoteId = '';
+        pendingFootnoteLines = [];
       }};
       const flushParagraph = () => {{
         if (!paragraph.length) return;
@@ -14096,6 +17281,26 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         blocks.push('<' + tag + '>' + listItems.join('') + '</' + tag + '>');
         listType = '';
         listItems = [];
+      }};
+      const flushFootnotes = () => {{
+        flushFootnote();
+        if (!footnotes.length) return;
+        const items = footnotes.map((footnote) => {{
+          const safeId = String(footnote.id || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+          const body = footnote.body ? renderMarkdown(footnote.body) : '';
+          return (
+            '<li id=\"footnote-' + safeId + '\">' +
+              '<div>' + body + '</div>' +
+              '<a class=\"footnote-backref\" href=\"#footnotes\" aria-label=\"Back to footnotes\">↩</a>' +
+            '</li>'
+          );
+        }}).join('');
+        blocks.push(
+          '<section id=\"footnotes\" class=\"footnotes\">' +
+            '<strong>Footnotes</strong>' +
+            '<ol>' + items + '</ol>' +
+          '</section>'
+        );
       }};
       const flushCode = () => {{
         const encoded = encodeURIComponent(codeLines.join('\\n'));
@@ -14116,6 +17321,8 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         flushParagraph();
         flushList();
         flushTable();
+        flushCallout();
+        flushFootnote();
       }};
       for (const rawLine of lines) {{
         const line = rawLine.trimEnd();
@@ -14135,6 +17342,40 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
           codeLines.push(rawLine);
           continue;
         }}
+        const calloutFence = line.match(/^:::\\s*(.*)$/);
+        if (calloutFence) {{
+          if (inCallout) {{
+            flushBlockState();
+          }} else {{
+            flushBlockState();
+            inCallout = true;
+            calloutTitle = calloutFence[1].trim();
+          }}
+          continue;
+        }}
+        if (inCallout) {{
+          calloutLines.push(rawLine);
+          continue;
+        }}
+        const footnoteDef = rawLine.match(/^\\[\\^([^\\]]+)\\]:\\s*(.*)$/);
+        if (footnoteDef) {{
+          flushBlockState();
+          flushFootnote();
+          pendingFootnoteId = footnoteDef[1].trim();
+          pendingFootnoteLines = [footnoteDef[2].trim()];
+          continue;
+        }}
+        if (pendingFootnoteId) {{
+          if (/^(?:\\s{{4,}}|\\t)/.test(rawLine)) {{
+            pendingFootnoteLines.push(rawLine.replace(/^(?:\\s{{4}}|\\t)/, ''));
+            continue;
+          }}
+          if (!line.trim()) {{
+            pendingFootnoteLines.push('');
+            continue;
+          }}
+          flushFootnote();
+        }}
         if (!line.trim()) {{
           flushBlockState();
           continue;
@@ -14144,7 +17385,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
           blocks.push('<hr>');
           continue;
         }}
-        const tableDivider = /^[|]?(?:\\s*:?-{3,}:?\\s*[|])+\\s*:?-{3,}:?\\s*[|]?$/.test(line);
+        const tableDivider = /^[|]?(?:\\s*:?-{{3,}}:?\\s*[|])+\\s*:?-{{3,}}:?\\s*[|]?$/.test(line);
         const tableRow = /^\\s*[|].*[|]\\s*$/.test(line);
         if (tableRow) {{
           const cells = line.trim().replace(/^[|]/, '').replace(/[|]$/, '').split('|');
@@ -14165,7 +17406,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         if (inTable && !tableDivider && !tableRow) {{
           flushTable();
         }}
-        const heading = line.match(/^(#{1,4})\\s+(.*)$/);
+        const heading = line.match(/^(#{{1,4}})\\s+(.*)$/);
         if (heading) {{
           flushBlockState();
           const level = heading[1].length;
@@ -14217,6 +17458,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         flushCode();
       }}
       flushBlockState();
+      flushFootnotes();
       return blocks.join('');
     }}
     function applySearchHighlights(root, query) {{
@@ -14261,7 +17503,21 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       const convo = activeConversation();
       els.chat.innerHTML = '';
       if (!convo || !convo.messages || !convo.messages.length) {{
-        const firstLoad = !state.models.length && !state.conversations.length;
+        const missingModels = !state.models.length;
+        const missingConversations = !state.conversations.length;
+        const firstLoad = missingModels && missingConversations;
+        const workspaceNeedsSetup = missingModels || missingConversations;
+        const workspaceBadges = [
+          missingModels
+            ? '<span class=\"onboarding-badge missing\">No models configured</span>'
+            : '<span class=\"onboarding-badge ready\">' + escapeHtml(String(state.models.length)) + ' models ready</span>',
+          missingConversations
+            ? '<span class=\"onboarding-badge missing\">No conversations yet</span>'
+            : '<span class=\"onboarding-badge ready\">' + escapeHtml(String(state.conversations.length)) + ' conversations ready</span>',
+          state.promptTemplates.length
+            ? '<span class=\"onboarding-badge ready\">' + escapeHtml(String(state.promptTemplates.length)) + ' templates available</span>'
+            : '<span class=\"onboarding-badge missing\">No saved templates</span>',
+        ].join('');
         const starterChips = starterPromptTemplates.map((template) => `
           <button type=\"button\" class=\"chip\" data-starter-template=\"${{escapeHtml(template.id)}}\">${{escapeHtml(template.name)}}</button>
         `).join('');
@@ -14285,13 +17541,32 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         ];
         els.chat.innerHTML = `
           <div class=\"chat-empty\">
-            <div class=\"chat-empty-card ${{firstLoad ? 'onboarding' : ''}}\">
+            <div class=\"chat-empty-card ${{workspaceNeedsSetup ? 'onboarding' : ''}}\">
               <div class=\"onboarding-top\">
-                <div class=\"eyebrow\">${{firstLoad ? 'First load onboarding' : 'Ready for use'}}</div>
-                <h3>${{firstLoad ? 'Set up your first workspace' : 'Open a model, load a template, or start a new conversation.'}}</h3>
+                <div class=\"eyebrow\">${{firstLoad ? 'First load onboarding' : workspaceNeedsSetup ? 'Workspace setup required' : 'Ready for use'}}</div>
+                <h3>${{firstLoad
+                  ? 'Set up your first workspace'
+                  : workspaceNeedsSetup
+                    ? 'Seed the missing pieces before you chat'
+                    : 'Open a model, load a template, or start a new conversation.'}}</h3>
                 <p>${{firstLoad
                   ? 'No models and no conversations are configured yet. Use the setup actions below to seed the workspace and start chatting in one pass.'
-                  : 'This workspace is already wired for prompts, files, agents, and history. Use the quick actions below to begin with one click.'}}</p>
+                  : workspaceNeedsSetup
+                    ? 'This workspace is missing ' +
+                      (missingModels ? 'models' : '') +
+                      (missingModels && missingConversations ? ' and ' : '') +
+                      (missingConversations ? 'conversations' : '') +
+                      '. Use the setup actions below to get to a runnable state quickly.'
+                    : 'This workspace is already wired for prompts, files, agents, and history. Use the quick actions below to begin with one click.'}}</p>
+              </div>
+              <div class=\"onboarding-summary\">
+                <header>
+                  <h4>Workspace status</h4>
+                  <p>${{workspaceNeedsSetup
+                    ? 'The interface is ready, but the workspace needs a model target and a conversation history to feel fully loaded.'
+                    : 'Everything is configured for immediate use.'}}</p>
+                </header>
+                <div class=\"onboarding-badges\">${{workspaceBadges}}</div>
               </div>
               <div class=\"chat-empty-actions\">
                 <button type=\"button\" class=\"secondary\" id=\"chat-empty-focus\">Focus prompt</button>
@@ -14376,6 +17651,25 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         }}
         const role = message.role || 'assistant';
         const content = message.content || '';
+        const contextStart = conversationContextStart(convo);
+        if (contextStart && index === contextStart) {{
+          const divider = document.createElement('div');
+          divider.className = 'clear-context-divider';
+          divider.innerHTML = `
+            <span><strong>Context cleared above.</strong> Earlier messages stay in the transcript but are excluded from future requests.</span>
+          `;
+          const revert = document.createElement('button');
+          revert.type = 'button';
+          revert.className = 'secondary';
+          revert.textContent = 'Revert';
+          revert.addEventListener('click', () => {{
+            convo.clearContextIndex = null;
+            void saveConversation(convo);
+            renderAll();
+          }});
+          divider.appendChild(revert);
+          els.chat.appendChild(divider);
+        }}
         const header = document.createElement('div');
         header.className = 'message-header';
         const roleLabel = document.createElement('span');
@@ -14422,6 +17716,17 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             beginEditMessage(index);
           }});
           actions.appendChild(editButton);
+          const clearContextButton = document.createElement('button');
+          clearContextButton.type = 'button';
+          clearContextButton.className = 'secondary';
+          clearContextButton.textContent = convo.clearContextIndex === index + 1 ? 'Context cut' : 'Clear context';
+          clearContextButton.title = 'Keep the transcript, but start future requests from the next message.';
+          clearContextButton.addEventListener('click', () => {{
+            convo.clearContextIndex = index + 1;
+            void saveConversation(convo);
+            renderAll();
+          }});
+          actions.appendChild(clearContextButton);
         }}
         const deleteButton = document.createElement('button');
         deleteButton.type = 'button';
@@ -14484,8 +17789,26 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
               await copyText(decodeURIComponent(button.dataset.codeCopy || ''));
             }});
           }});
+          if (role === 'assistant') {{
+            const sources = normalizeMessageSources(message.sources || message.citations || []);
+            contentWrap.querySelectorAll('.citation[data-citation-index]').forEach((node) => {{
+              const rawIndex = Number(node.getAttribute('data-citation-index') || '0');
+              const source = rawIndex > 0 ? sources[rawIndex - 1] : null;
+              if (!source) return;
+              node.title = source.url ? `Open source ${{rawIndex}} preview` : `Inspect source ${{rawIndex}}`;
+              node.addEventListener('click', () => {{
+                openSourcePreview(source);
+              }});
+            }});
+          }}
           applySearchHighlights(contentWrap, searchQuery);
           block.appendChild(contentWrap);
+          if (role === 'assistant') {{
+            const sourceSection = renderMessageSources(message.sources || message.citations || []);
+            if (sourceSection) {{
+              block.appendChild(sourceSection);
+            }}
+          }}
         }}
         els.chat.appendChild(block);
       }});
@@ -14531,8 +17854,108 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       for (const message of convo.messages || []) {{
         transcriptParts.push(String(message && message.content ? message.content : ''));
       }}
-      const estimated = estimateTokenCount(transcriptParts.join('\n'));
+      const estimated = estimateTokenCount(transcriptParts.join('\\n'));
       return `Token estimate: ~${{estimated}}`;
+    }}
+    function dashboardCount(value, singular, plural) {{
+      const count = Number(value) || 0;
+      return `${{count}} ${{count === 1 ? singular : (plural || `${{singular}}s`)}}`;
+    }}
+    function dashboardConversationTimestamp(convo) {{
+      const raw = convo && (convo.updatedAt || convo.updated_at || convo.createdAt || convo.created_at);
+      const timestamp = raw ? Date.parse(String(raw)) : 0;
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    }}
+    function focusDashboardTarget(targetId) {{
+      const id = String(targetId || '').replace(/^#/, '');
+      if (!id) return;
+      const sidebarTargetIds = new Set([
+        'model-select', 'provider-chips', 'kb-query', 'agent-select', 'file-search', 'conversation-list',
+        'skill-chips', 'memory-chips', 'note-chips', 'artifact-chips', 'tool-chips',
+      ]);
+      if (sidebarTargetIds.has(id) && state.sidebarCollapsed) {{
+        setSidebarCollapsed(false);
+      }}
+      const target = document.getElementById(id);
+      if (!target) return;
+      document.querySelectorAll('.dashboard-nav button[data-dashboard-target]').forEach((button) => {{
+        button.classList.toggle('active', button.dataset.dashboardTarget === id);
+      }});
+      target.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+      if (id === 'prompt') {{
+        window.setTimeout(() => els.prompt.focus(), 180);
+      }}
+    }}
+    function renderDashboard() {{
+      const models = Array.isArray(state.models) ? state.models : [];
+      const providers = new Set(
+        models.map((model) => String(model.providerName || model.provider || '').trim()).filter(Boolean)
+      );
+      const conversations = Array.isArray(state.conversations) ? state.conversations : [];
+      const currentModelId = String(state.currentModel || bootstrap.selectedModel || '').trim();
+      const currentModel = models.find((model) => String(model.id || '') === currentModelId) || null;
+      const currentModelLabel = currentModel ? String(currentModel.id || '') : (currentModelId || 'Not selected');
+      const fallbackEnabled = Boolean(bootstrap.autoFallback);
+      const resources = [
+        {{ label: 'Files', value: state.files.length, target: 'file-search', detail: 'Workspace library' }},
+        {{ label: 'Knowledge bases', value: state.knowledgeBases.length, target: 'kb-query', detail: 'Registered RAG sources' }},
+        {{ label: 'Agents', value: state.agents.length, target: 'agent-select', detail: 'Reusable presets' }},
+        {{ label: 'Skills', value: state.skills.length, target: 'skill-chips', detail: 'Prompt-side blocks' }},
+        {{ label: 'Memories', value: state.memories.length, target: 'memory-chips', detail: 'Saved context' }},
+        {{ label: 'Notes', value: state.notes.length, target: 'note-chips', detail: 'Working notes' }},
+        {{ label: 'Artifacts', value: state.artifacts.length, target: 'artifact-chips', detail: 'Reusable outputs' }},
+        {{ label: 'Tool servers', value: state.toolServers.length, target: 'tool-chips', detail: 'Connected tools' }},
+      ];
+      const resourceCount = resources.reduce((total, item) => total + (Number(item.value) || 0), 0);
+      const ready = Boolean(models.length && currentModelId);
+      if (els.dashboardModelsValue) els.dashboardModelsValue.textContent = String(models.length);
+      if (els.dashboardModelsMeta) els.dashboardModelsMeta.textContent = models.length ? dashboardCount(models.length, 'routing target') : 'Add provider presets to begin';
+      if (els.dashboardProvidersValue) els.dashboardProvidersValue.textContent = String(providers.size);
+      if (els.dashboardProvidersMeta) els.dashboardProvidersMeta.textContent = providers.size ? dashboardCount(providers.size, 'provider family') : 'No providers configured';
+      if (els.dashboardChatsValue) els.dashboardChatsValue.textContent = String(conversations.length);
+      if (els.dashboardChatsMeta) els.dashboardChatsMeta.textContent = conversations.length ? dashboardCount(conversations.length, 'saved session') : 'Start the first session';
+      if (els.dashboardResourcesValue) els.dashboardResourcesValue.textContent = String(resourceCount);
+      if (els.dashboardResourcesMeta) els.dashboardResourcesMeta.textContent = resourceCount ? dashboardCount(resourceCount, 'workspace resource') : 'Add files, knowledge, or presets';
+      if (els.dashboardPrimaryModel) els.dashboardPrimaryModel.textContent = currentModelLabel;
+      if (els.dashboardRuntimeModel) els.dashboardRuntimeModel.textContent = currentModelLabel;
+      if (els.dashboardRuntimeFallback) els.dashboardRuntimeFallback.textContent = fallbackEnabled ? 'Auto fallback on' : 'Single route';
+      if (els.dashboardRuntimeSession) els.dashboardRuntimeSession.textContent = activeConversation() ? 'Session ready' : 'New session';
+      if (els.dashboardRuntimeCopy) els.dashboardRuntimeCopy.textContent = ready
+        ? `${{currentModelLabel}} is selected for the active chat${{fallbackEnabled ? ', with automatic fallback enabled.' : '.'}}`
+        : 'Choose a configured model to begin a local session.';
+      if (els.dashboardStatusTitle) els.dashboardStatusTitle.textContent = ready
+        ? (fallbackEnabled ? 'Routing ready · fallback armed' : 'Routing ready')
+        : (models.length ? 'Choose a primary model' : 'No routing targets configured');
+      if (els.dashboardStatusCopy) els.dashboardStatusCopy.textContent = ready
+        ? 'The local workspace can accept prompts and keep the active conversation in sync.'
+        : (models.length ? 'Select a model from the sidebar or the Models action below.' : 'Add provider presets or register a model before starting a session.');
+      if (els.dashboardFallbackStatus) els.dashboardFallbackStatus.textContent = fallbackEnabled ? 'Auto fallback: enabled' : 'Auto fallback: disabled';
+      if (els.dashboardRecentChats) {{
+        const recent = conversations
+          .slice()
+          .sort((left, right) => dashboardConversationTimestamp(right) - dashboardConversationTimestamp(left))
+          .slice(0, 4);
+        if (!recent.length) {{
+          els.dashboardRecentChats.innerHTML = '<div class="dashboard-empty">No saved sessions yet. Start a chat to create the first activity item.</div>';
+        }} else {{
+          els.dashboardRecentChats.innerHTML = recent.map((convo) => {{
+            const details = conversationSnippet(convo);
+            const id = String(convo.id || '');
+            return `<button class="dashboard-activity-item" type="button" data-dashboard-conversation-id="${{escapeHtml(id)}}">
+              <span><strong>${{escapeHtml(convo.title || convo.id || 'Untitled chat')}}</strong><small>${{escapeHtml(details.snippet || details.summary || 'No transcript yet')}}</small></span>
+              <span>${{convo.id === state.activeId ? 'Active' : 'Open'}}</span>
+            </button>`;
+          }}).join('');
+        }}
+      }}
+      if (els.dashboardResourceList) {{
+        els.dashboardResourceList.innerHTML = resources.map((item) => `
+          <button class="dashboard-resource-row" type="button" data-dashboard-target="${{escapeHtml(item.target)}}">
+            <span><strong>${{escapeHtml(item.label)}}</strong><small>${{escapeHtml(item.detail)}}</small></span>
+            <span>${{item.value}}</span>
+          </button>
+        `).join('');
+      }}
     }}
     function renderAll() {{
       persistActiveFields();
@@ -14543,6 +17966,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       renderConversationList();
       renderMessages();
       renderProviders();
+      renderComposerState();
       renderKnowledgeBases();
       renderAgentEditor(editingAgentId ? (els.agentEditorFolder.value || '') : (activeAgent() && activeAgent().folderId ? activeAgent().folderId : ''));
       renderAgents();
@@ -14553,6 +17977,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       renderWebSearch();
       renderTools();
       renderWebhooks();
+      renderDashboard();
       renderStatusPills();
       updateQueueStatus();
       const convo = activeConversation();
@@ -14703,9 +18128,19 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         lines.push(`## ${{message.role}}`);
         lines.push('');
         lines.push(String(message.content || '').trim() || '_empty_');
+        const sources = normalizeMessageSources(message.sources || message.citations || []);
+        if (sources.length) {{
+          lines.push('');
+          lines.push('Sources:');
+          for (const source of sources) {{
+            const label = source.title || source.id || source.url || 'Source';
+            const url = source.url ? ` (${{source.url}})` : '';
+            lines.push(`- ${{label}}${{url}}`);
+          }}
+        }}
         lines.push('');
       }}
-      return lines.join('\n').trim() + '\n';
+      return lines.join('\\n').trim() + '\\n';
     }}
     function conversationShareGPT(convo) {{
       const messages = [];
@@ -14715,7 +18150,12 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       for (const message of convo.messages || []) {{
         if (!message || !message.role) continue;
         const from = message.role === 'user' ? 'human' : 'assistant';
-        messages.push({{ from, value: String(message.content || '') }});
+        const payload = {{ from, value: String(message.content || '') }};
+        const sources = normalizeMessageSources(message.sources || message.citations || []);
+        if (sources.length) {{
+          payload.sources = sources;
+        }}
+        messages.push(payload);
       }}
       return {{
         id: convo.id || 'chat',
@@ -14732,13 +18172,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (convo.files && convo.files.length) parts.push(`Files: ${{convo.files.join(', ')}}`);
       for (const message of convo.messages || []) {{
         if (!message || !message.role) continue;
-        parts.push(`${{message.role}}: ${{String(message.content || '').trim()}}`);
+        const sourceParts = normalizeMessageSources(message.sources || message.citations || [])
+          .map((source) => source.title || source.id || source.url || 'Source');
+        const suffix = sourceParts.length ? ` [sources: ${{sourceParts.join(', ')}}]` : '';
+        parts.push(`${{message.role}}: ${{String(message.content || '').trim()}}${{suffix}}`);
       }}
-      return parts.join('\n\n').trim();
+      return parts.join('\\n\\n').trim();
     }}
     function wrapCanvasText(ctx, text, maxWidth) {{
-      const source = String(text || '').replace(/\r\n/g, '\n');
-      const paragraphs = source.split('\n');
+      const source = String(text || '').replace(/\\r\\n/g, '\\n');
+      const paragraphs = source.split('\\n');
       const lines = [];
       for (const paragraph of paragraphs) {{
         if (!paragraph.trim()) {{
@@ -14877,7 +18320,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (format === 'json') {{
         downloadText(
           `${{convo.id || 'chat'}}-${{stamp}}.json`,
-          JSON.stringify(convo, null, 2) + '\n',
+          JSON.stringify(convo, null, 2) + '\\n',
           'application/json'
         );
         return;
@@ -14886,7 +18329,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         const payload = conversationShareGPT(convo);
         downloadText(
           `${{convo.id || 'chat'}}-${{stamp}}.sharegpt.json`,
-          JSON.stringify(payload, null, 2) + '\n',
+          JSON.stringify(payload, null, 2) + '\\n',
           'application/json'
         );
         return;
@@ -15014,7 +18457,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         const {{ done, value }} = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, {{ stream: true }});
-        buffer = buffer.replace(/\r\n/g, '\\n');
+        buffer = buffer.replace(/\\r\\n/g, '\\\\n');
         let separator = buffer.indexOf('\\n\\n');
         while (separator !== -1) {{
           const eventText = buffer.slice(0, separator);
@@ -15057,6 +18500,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       const appendUser = options.appendUser !== false;
       const convo = activeConversation() || newConversation();
       const model = options.model || els.modelSelect.value || state.currentModel || bootstrap.selectedModel || '';
+      if (!model) {{
+        window.alert('Add a provider preset before sending a message.');
+        renderComposerState();
+        return;
+      }}
       const systemPrompt = Object.prototype.hasOwnProperty.call(options, 'systemPrompt')
         ? String(options.systemPrompt || '').trim()
         : els.systemPrompt.value.trim();
@@ -15067,6 +18515,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       const compareModel = Object.prototype.hasOwnProperty.call(options, 'compareModel')
         ? String(options.compareModel || '')
         : (els.compareModelSelect.value || '');
+      if (compareEnabled && compareModel && compareModel === model) {{
+        window.alert('Choose a different compare model before sending.');
+        renderComposerState();
+        return;
+      }}
       const requestedModels = compareEnabled && compareModel && compareModel !== model
         ? [model, compareModel]
         : [model];
@@ -15110,8 +18563,9 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
         els.conversationTitle.value = convo.title;
         els.title.textContent = convo.title;
       }}
-      const assistant = {{ role: 'assistant', content: '', streaming: true }};
+      const assistant = {{ role: 'assistant', content: '', streaming: true, sources: [] }};
       convo.messages.push(assistant);
+      const contextMessages = conversationContextMessages(convo);
       if (activeAbortController) {{
         activeAbortController.abort();
       }}
@@ -15130,7 +18584,7 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
             model,
             models: requestedModels.length > 1 ? requestedModels : undefined,
             stream: true,
-            messages: convo.messages.filter((msg) => msg.role !== 'assistant' || !msg.streaming),
+            messages: contextMessages.filter((msg) => msg.role !== 'assistant' || !msg.streaming),
           }}),
         }});
         if (!response.ok) {{
@@ -15156,14 +18610,17 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
           }});
           if (finalPayload && finalPayload.choices && finalPayload.choices[0] && finalPayload.choices[0].message) {{
             assistant.content = finalPayload.choices[0].message.content || assistant.content;
+            assistant.sources = extractMessageSources(finalPayload);
           }} else if (finalPayload && typeof finalPayload.content === 'string') {{
             assistant.content = finalPayload.content;
+            assistant.sources = extractMessageSources(finalPayload);
           }}
           assistant.streaming = false;
-          }} else {{
+        }} else {{
           const data = await response.json();
           const content = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : (data.content || '');
           assistant.content = content || '';
+          assistant.sources = extractMessageSources(data);
           assistant.streaming = false;
         }}
       }} catch (err) {{
@@ -15195,11 +18652,17 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     }});
     els.compareToggle.addEventListener('change', () => {{
       state.compareEnabled = !!els.compareToggle.checked;
+      if (!state.compareEnabled) state.compareModel = '';
       persistActiveFields();
       renderAll();
     }});
     els.compareModelSelect.addEventListener('change', () => {{
       state.compareModel = els.compareModelSelect.value || '';
+      if (state.compareEnabled && state.compareModel === (els.modelSelect.value || state.currentModel || bootstrap.selectedModel || '')) {{
+        renderComposerState();
+        persistActiveFields();
+        return;
+      }}
       persistActiveFields();
       renderAll();
     }});
@@ -15225,6 +18688,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     els.dictateButton.addEventListener('click', () => {{
       toggleVoiceInput();
       renderAll();
+    }});
+    els.voiceSelect.addEventListener('change', () => {{
+      state.voiceSpeakVoice = els.voiceSelect.value || '';
+      save();
+      renderVoiceControls();
     }});
     els.refreshKb.addEventListener('click', async () => {{
       await refreshKnowledgeBases();
@@ -15855,6 +19323,33 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       persistActiveFields();
       renderAll();
     }});
+    els.fileSelectVisible.addEventListener('click', () => {{
+      selectVisibleFiles();
+    }});
+    els.fileClearSelection.addEventListener('click', () => {{
+      clearSelectedFileSelection();
+    }});
+    els.fileDeleteSelected.addEventListener('click', async () => {{
+      try {{
+        await deleteSelectedFiles();
+      }} catch (err) {{
+        window.alert(String(err.message || err));
+      }}
+    }});
+    els.fileCloneSelected.addEventListener('click', async () => {{
+      try {{
+        await cloneSelectedFiles();
+      }} catch (err) {{
+        window.alert(String(err.message || err));
+      }}
+    }});
+    els.fileExportSelected.addEventListener('click', async () => {{
+      try {{
+        await exportSelectedFilesToFile();
+      }} catch (err) {{
+        window.alert(String(err.message || err));
+      }}
+    }});
     els.fileImport.addEventListener('click', async () => {{
       try {{
         await importFilesFromFile();
@@ -15891,6 +19386,11 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     els.clearFileSearch.addEventListener('click', () => {{
       state.fileSearch = '';
       els.fileSearch.value = '';
+      save();
+      renderFiles();
+    }});
+    els.fileTreeView.addEventListener('click', () => {{
+      state.fileTreeView = !state.fileTreeView;
       save();
       renderFiles();
     }});
@@ -15965,9 +19465,29 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       if (!previewFile) return;
       await copyText(String(previewFile.content || ''));
     }});
+    els.closeSourcePreview.addEventListener('click', () => {{
+      closeSourcePreview();
+    }});
+    els.copySourcePreview.addEventListener('click', async () => {{
+      if (!previewSource) return;
+      const details = describeSource(previewSource);
+      await copyText(
+        [
+          details.title || 'Source',
+          details.url ? `URL: ${{details.url}}` : '',
+          details.details || '',
+          JSON.stringify(previewSource, null, 2),
+        ].filter(Boolean).join('\\n\\n')
+      );
+    }});
     els.filePreviewBackdrop.addEventListener('click', (event) => {{
       if (event.target === els.filePreviewBackdrop) {{
         closeFilePreview();
+      }}
+    }});
+    els.sourcePreviewBackdrop.addEventListener('click', (event) => {{
+      if (event.target === els.sourcePreviewBackdrop) {{
+        closeSourcePreview();
       }}
     }});
     els.shortcutsBackdrop.addEventListener('click', (event) => {{
@@ -16013,6 +19533,34 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
       setSidebarCollapsed(false);
       els.conversationTitle.focus();
       els.conversationTitle.select();
+    }});
+    els.dashboardNewChat.addEventListener('click', () => {{
+      newConversation();
+      focusDashboardTarget('prompt');
+    }});
+    els.dashboardFocusChat.addEventListener('click', () => {{
+      focusDashboardTarget('chat');
+      window.setTimeout(() => els.prompt.focus(), 180);
+    }});
+    document.addEventListener('click', (event) => {{
+      const conversationTarget = event.target.closest?.('[data-dashboard-conversation-id]');
+      if (conversationTarget) {{
+        const conversationId = String(conversationTarget.dataset.dashboardConversationId || '');
+        const convo = state.conversations.find((item) => String(item.id || '') === conversationId) || null;
+        if (!convo) return;
+        event.preventDefault();
+        state.activeId = convo.id;
+        if (convo.model) state.currentModel = convo.model;
+        save();
+        syncFields();
+        renderAll();
+        focusDashboardTarget('chat');
+        return;
+      }}
+      const dashboardTarget = event.target.closest?.('[data-dashboard-target]');
+      if (!dashboardTarget) return;
+      event.preventDefault();
+      focusDashboardTarget(dashboardTarget.dataset.dashboardTarget || '');
     }});
     els.duplicateChat.addEventListener('click', () => {{
       const convo = activeConversation();
@@ -16179,6 +19727,16 @@ def render_chat_ui_html(settings: dict[str, Any]) -> str:
     syncFields();
     applyTheme();
     renderVoiceControls();
+    if ('speechSynthesis' in window) {{
+      const refreshVoices = () => {{
+        renderVoiceControls();
+      }};
+      if (typeof window.speechSynthesis.addEventListener === 'function') {{
+        window.speechSynthesis.addEventListener('voiceschanged', refreshVoices);
+      }} else {{
+        window.speechSynthesis.onvoiceschanged = refreshVoices;
+      }}
+    }}
     renderAll();
   </script>
 </body>
@@ -16501,7 +20059,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path == "/api/health":
-            body = json.dumps({"ok": True, "version": VERSION}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"ok": True, "version": VERSION}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16509,7 +20069,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/bootstrap", "/api/ai/bootstrap"):
-            body = json.dumps(_settings_bootstrap(settings), ensure_ascii=False).encode("utf-8")
+            body = json.dumps(_settings_bootstrap(settings), ensure_ascii=False).encode(
+                "utf-8"
+            )
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16543,7 +20105,10 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/providers", "/api/ai/providers"):
-            body = json.dumps({"data": self.state.settings.get("modelProviders", {})}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": self.state.settings.get("modelProviders", {})},
+                ensure_ascii=False,
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16551,7 +20116,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/prompt-templates", "/api/ai/prompt-templates"):
-            body = json.dumps({"data": _settings_prompt_templates(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_prompt_templates(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16559,7 +20126,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/folders", "/api/ai/folders"):
-            body = json.dumps({"data": _settings_folders(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_folders(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16567,7 +20136,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/conversations", "/api/ai/conversations"):
-            body = json.dumps({"data": _settings_conversations(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_conversations(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16614,7 +20185,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/skills", "/api/ai/skills"):
-            body = json.dumps({"data": _settings_skills(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_skills(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16622,7 +20195,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/memories", "/api/ai/memories"):
-            body = json.dumps({"data": _settings_memories(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_memories(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16630,7 +20205,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/notes", "/api/ai/notes"):
-            body = json.dumps({"data": _settings_notes(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_notes(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16638,7 +20215,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/artifacts", "/api/ai/artifacts"):
-            body = json.dumps({"data": _settings_artifacts(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_artifacts(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16646,7 +20225,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/tools", "/api/ai/tools"):
-            body = json.dumps({"data": _settings_tool_servers(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_tool_servers(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16654,7 +20235,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/agents", "/api/ai/agents"):
-            body = json.dumps({"data": _settings_agents(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_agents(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16662,7 +20245,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path in ("/api/webhooks", "/api/ai/webhooks"):
-            body = json.dumps({"data": _settings_webhooks(settings)}, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(
+                {"data": _settings_webhooks(settings)}, ensure_ascii=False
+            ).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -16712,7 +20297,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/folders", "/api/ai/folders"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    folder_id = str(payload.get("id") or payload.get("folderId") or "").strip()
+                    folder_id = str(
+                        payload.get("id") or payload.get("folderId") or ""
+                    ).strip()
                     self.state.delete_folder(folder_id)
                     self._send_json(200, {"ok": True, "deleted": folder_id})
                     return
@@ -16723,30 +20310,52 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 action = str(payload.get("action") or "").strip()
                 if action in ("add-presets", "add", "seed", ""):
                     added = self.state.add_provider_presets()
-                    self._send_json(200, {"ok": True, "added": added, "data": self.state.settings.get("modelProviders", {})})
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "added": added,
+                            "data": self.state.settings.get("modelProviders", {}),
+                        },
+                    )
                     return
                 if action in ("delete-model", "remove-model", "delete"):
-                    model_id = str(payload.get("id") or payload.get("modelId") or "").strip()
+                    model_id = str(
+                        payload.get("id") or payload.get("modelId") or ""
+                    ).strip()
                     self.state.delete_provider_model(model_id)
-                    self._send_json(200, {"ok": True, "deleted": model_id, "data": self.state.settings.get("modelProviders", {})})
+                    self._send_json(
+                        200,
+                        {
+                            "ok": True,
+                            "deleted": model_id,
+                            "data": self.state.settings.get("modelProviders", {}),
+                        },
+                    )
                     return
                 self._send_json(400, {"error": "unsupported provider action"})
                 return
             if self.path in ("/api/kb", "/api/ai/kb"):
                 action = str(payload.get("action") or "").strip()
                 if action == "delete":
-                    base_id = str(payload.get("id") or payload.get("baseId") or "").strip()
+                    base_id = str(
+                        payload.get("id") or payload.get("baseId") or ""
+                    ).strip()
                     self.state.delete_knowledge_base(base_id)
                     self._send_json(200, {"ok": True, "deleted": base_id})
                     return
                 if action == "import":
-                    raw = payload.get("content", payload.get("json", payload.get("data")))
+                    raw = payload.get(
+                        "content", payload.get("json", payload.get("data"))
+                    )
                     parsed: Any = raw
                     if isinstance(raw, str):
                         try:
                             parsed = json.loads(raw)
                         except json.JSONDecodeError:
-                            self._send_json(400, {"error": "import content must be valid JSON"})
+                            self._send_json(
+                                400, {"error": "import content must be valid JSON"}
+                            )
                             return
                     bases, indexes = self.state.import_knowledge_sources(parsed)
                     self._send_json(
@@ -16765,11 +20374,17 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                         {
                             "data": {
                                 "knowledgeBases": _settings_knowledge_bases(settings),
-                                "knowledgeIndexes": _settings_knowledge_indexes(settings),
+                                "knowledgeIndexes": _settings_knowledge_indexes(
+                                    settings
+                                ),
                                 "content": json.dumps(
                                     {
-                                        "knowledgeBases": _settings_knowledge_bases(settings),
-                                        "knowledgeIndexes": _settings_knowledge_indexes(settings),
+                                        "knowledgeBases": _settings_knowledge_bases(
+                                            settings
+                                        ),
+                                        "knowledgeIndexes": _settings_knowledge_indexes(
+                                            settings
+                                        ),
                                     },
                                     indent=2,
                                     ensure_ascii=False,
@@ -16780,15 +20395,19 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if action == "refresh":
-                    base_id = str(payload.get("id") or payload.get("baseId") or "").strip()
+                    base_id = str(
+                        payload.get("id") or payload.get("baseId") or ""
+                    ).strip()
                     if not base_id:
                         self._send_json(400, {"error": "baseId is required"})
                         return
-                    source_label, index, refreshed_base = self.state.refresh_knowledge_base(
-                        base_id,
-                        int(payload.get("chunkSize") or 2000),
-                        int(payload.get("overlap") or 200),
-                        int(payload.get("timeout") or DEFAULT_TIMEOUT),
+                    source_label, index, refreshed_base = (
+                        self.state.refresh_knowledge_base(
+                            base_id,
+                            int(payload.get("chunkSize") or 2000),
+                            int(payload.get("overlap") or 200),
+                            int(payload.get("timeout") or DEFAULT_TIMEOUT),
+                        )
                     )
                     self._send_json(
                         200,
@@ -16802,9 +20421,13 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if action == "sync":
-                    base_id = str(payload.get("id") or payload.get("baseId") or "").strip()
+                    base_id = str(
+                        payload.get("id") or payload.get("baseId") or ""
+                    ).strip()
                     output_dir = payload.get("outputDir") or payload.get("output")
-                    output_path = pathlib.Path(str(output_dir)).expanduser() if isinstance(output_dir, str) and output_dir.strip() else None
+                    output_path = _api_knowledge_output_path(
+                        self.state.settings_path, output_dir
+                    )
                     manifest = self.state.sync_knowledge_bases(
                         base_id or None,
                         chunk_size=int(payload.get("chunkSize") or 2000),
@@ -16815,9 +20438,13 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     self._send_json(200, {"data": manifest})
                     return
                 if action == "watch":
-                    base_id = str(payload.get("id") or payload.get("baseId") or "").strip()
+                    base_id = str(
+                        payload.get("id") or payload.get("baseId") or ""
+                    ).strip()
                     output_dir = payload.get("outputDir") or payload.get("output")
-                    output_path = pathlib.Path(str(output_dir)).expanduser() if isinstance(output_dir, str) and output_dir.strip() else None
+                    output_path = _api_knowledge_output_path(
+                        self.state.settings_path, output_dir
+                    )
                     manifest = self.state.watch_knowledge_bases(
                         base_id or None,
                         iterations=int(payload.get("iterations") or 1),
@@ -16851,19 +20478,25 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/skills", "/api/ai/skills"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    skill_id = str(payload.get("id") or payload.get("skillId") or "").strip()
+                    skill_id = str(
+                        payload.get("id") or payload.get("skillId") or ""
+                    ).strip()
                     self.state.delete_skill(skill_id)
                     self._send_json(200, {"ok": True, "deleted": skill_id})
                     return
                 if str(payload.get("action") or "").strip() == "share":
-                    skill_id = str(payload.get("id") or payload.get("skillId") or "").strip()
+                    skill_id = str(
+                        payload.get("id") or payload.get("skillId") or ""
+                    ).strip()
                     skill = _find_skill(_settings_skills(self.state.settings), skill_id)
                     if skill is None:
                         self._send_json(404, {"error": f"skill '{skill_id}' not found"})
                         return
                     fmt = str(payload.get("format") or "md").strip().lower()
                     if fmt == "json":
-                        rendered = json.dumps(skill, indent=2, ensure_ascii=False) + "\n"
+                        rendered = (
+                            json.dumps(skill, indent=2, ensure_ascii=False) + "\n"
+                        )
                     elif fmt == "html":
                         rendered = render_skill_html(skill)
                     else:
@@ -16885,39 +20518,63 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/agents", "/api/ai/agents"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    agent_id = str(payload.get("id") or payload.get("agentId") or "").strip()
+                    agent_id = str(
+                        payload.get("id") or payload.get("agentId") or ""
+                    ).strip()
                     self.state.delete_agent(agent_id)
                     self._send_json(200, {"ok": True, "deleted": agent_id})
                     return
                 if str(payload.get("action") or "").strip() == "import":
-                    raw = payload.get("content", payload.get("json", payload.get("data")))
+                    raw = payload.get(
+                        "content", payload.get("json", payload.get("data"))
+                    )
                     parsed: Any = raw
                     if isinstance(raw, str):
                         try:
                             parsed = json.loads(raw)
                         except json.JSONDecodeError:
-                            self._send_json(400, {"error": "import content must be valid JSON"})
+                            self._send_json(
+                                400, {"error": "import content must be valid JSON"}
+                            )
                             return
                     imported = _normalize_agent_source_payload(parsed)
                     if not imported:
-                        self._send_json(400, {"error": "no agents found in import payload"})
+                        self._send_json(
+                            400, {"error": "no agents found in import payload"}
+                        )
                         return
                     agents = settings.setdefault("agents", [])
                     if not isinstance(agents, list):
                         agents = []
                         settings["agents"] = agents
-                    existing = {str(a.get("id")): a for a in agents if isinstance(a, dict)}
+                    existing = {
+                        str(a.get("id")): a for a in agents if isinstance(a, dict)
+                    }
                     for item in imported:
-                        if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
+                        if (
+                            not isinstance(item.get("id"), str)
+                            or not str(item.get("id")).strip()
+                        ):
                             item = dict(item)
                             item["id"] = slugify(str(item.get("name") or "agent"))
-                        if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+                        if (
+                            not isinstance(item.get("name"), str)
+                            or not str(item.get("name")).strip()
+                        ):
                             item["name"] = str(item.get("id"))
-                        if not isinstance(item.get("baseModel"), str) or not str(item.get("baseModel")).strip():
-                            if isinstance(item.get("model"), str) and str(item.get("model")).strip():
+                        if (
+                            not isinstance(item.get("baseModel"), str)
+                            or not str(item.get("baseModel")).strip()
+                        ):
+                            if (
+                                isinstance(item.get("model"), str)
+                                and str(item.get("model")).strip()
+                            ):
                                 item["baseModel"] = str(item.get("model")).strip()
                         existing[str(item.get("id"))] = item
-                    agents[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+                    agents[:] = sorted(
+                        existing.values(), key=lambda x: str(x.get("id", "")).lower()
+                    )
                     normalize_agents(settings)
                     self.state._save()
                     self._send_json(200, {"data": {"agents": agents}})
@@ -16929,20 +20586,27 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                         {
                             "data": {
                                 "agents": agents,
-                                "content": json.dumps({"agents": agents}, indent=2, ensure_ascii=False) + "\n",
+                                "content": json.dumps(
+                                    {"agents": agents}, indent=2, ensure_ascii=False
+                                )
+                                + "\n",
                             }
                         },
                     )
                     return
                 if str(payload.get("action") or "").strip() == "share":
-                    agent_id = str(payload.get("id") or payload.get("agentId") or "").strip()
+                    agent_id = str(
+                        payload.get("id") or payload.get("agentId") or ""
+                    ).strip()
                     agent = _find_agent(_settings_agents(settings), agent_id)
                     if agent is None:
                         self._send_json(404, {"error": f"agent '{agent_id}' not found"})
                         return
                     fmt = str(payload.get("format") or "md").strip().lower()
                     if fmt == "json":
-                        rendered = json.dumps(agent, indent=2, ensure_ascii=False) + "\n"
+                        rendered = (
+                            json.dumps(agent, indent=2, ensure_ascii=False) + "\n"
+                        )
                     elif fmt == "html":
                         rendered = render_agent_html(agent)
                     else:
@@ -16960,7 +20624,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if str(payload.get("action") or "").strip() == "clone":
-                    agent_id = str(payload.get("id") or payload.get("agentId") or "").strip()
+                    agent_id = str(
+                        payload.get("id") or payload.get("agentId") or ""
+                    ).strip()
                     agents = settings.setdefault("agents", [])
                     if not isinstance(agents, list):
                         agents = []
@@ -16968,10 +20634,13 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     clone = _clone_registry_item(
                         agents,
                         agent_id,
-                        new_id=str(payload.get("newId") or payload.get("new_id") or "") or None,
+                        new_id=str(payload.get("newId") or payload.get("new_id") or "")
+                        or None,
                         new_title=str(payload.get("name") or "").strip() or None,
                     )
-                    clone["name"] = str(payload.get("name") or clone.get("name") or clone["id"]).strip()
+                    clone["name"] = str(
+                        payload.get("name") or clone.get("name") or clone["id"]
+                    ).strip()
                     agents.append(clone)
                     agents.sort(key=lambda x: str(x.get("id", "")).lower())
                     normalize_agents(settings)
@@ -16983,7 +20652,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/webhooks", "/api/ai/webhooks"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    webhook_id = str(payload.get("id") or payload.get("webhookId") or "").strip()
+                    webhook_id = str(
+                        payload.get("id") or payload.get("webhookId") or ""
+                    ).strip()
                     self.state.delete_webhook(webhook_id)
                     self._send_json(200, {"ok": True, "deleted": webhook_id})
                     return
@@ -17004,7 +20675,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                                         "description": info.get("description", ""),
                                         "requiresApiKey": bool(info.get("env_key")),
                                     }
-                                    for key, info in sorted(WEB_SEARCH_PROVIDERS.items())
+                                    for key, info in sorted(
+                                        WEB_SEARCH_PROVIDERS.items()
+                                    )
                                 ],
                                 "defaultProvider": "duckduckgo",
                             }
@@ -17019,11 +20692,17 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 provider = str(payload.get("provider") or "").strip()
                 if provider:
                     providers.append(provider)
-                fallback = payload.get("fallbackProviders", payload.get("fallbackProvider", []))
+                fallback = payload.get(
+                    "fallbackProviders", payload.get("fallbackProvider", [])
+                )
                 if isinstance(fallback, str):
-                    providers.extend([part.strip() for part in fallback.split(",") if part.strip()])
+                    providers.extend(
+                        [part.strip() for part in fallback.split(",") if part.strip()]
+                    )
                 elif isinstance(fallback, list):
-                    providers.extend([str(part).strip() for part in fallback if str(part).strip()])
+                    providers.extend(
+                        [str(part).strip() for part in fallback if str(part).strip()]
+                    )
                 results = fetch_web_search_results_chain(
                     query,
                     providers,
@@ -17042,8 +20721,12 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                             query,
                             results,
                             base_id=str(payload.get("baseId") or "").strip() or None,
-                            knowledge_name=str(payload.get("knowledgeName") or "").strip() or None,
-                            description=str(payload.get("description") or "").strip() or None,
+                            knowledge_name=str(
+                                payload.get("knowledgeName") or ""
+                            ).strip()
+                            or None,
+                            description=str(payload.get("description") or "").strip()
+                            or None,
                             save_limit=int(payload.get("saveLimit") or 5),
                             chunk_size=int(payload.get("chunkSize") or 2000),
                             overlap=int(payload.get("overlap") or 200),
@@ -17057,7 +20740,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/memories", "/api/ai/memories"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    memory_id = str(payload.get("id") or payload.get("memoryId") or "").strip()
+                    memory_id = str(
+                        payload.get("id") or payload.get("memoryId") or ""
+                    ).strip()
                     self.state.delete_memory(memory_id)
                     self._send_json(200, {"ok": True, "deleted": memory_id})
                     return
@@ -17066,7 +20751,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/notes", "/api/ai/notes"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    note_id = str(payload.get("id") or payload.get("noteId") or "").strip()
+                    note_id = str(
+                        payload.get("id") or payload.get("noteId") or ""
+                    ).strip()
                     self.state.delete_note(note_id)
                     self._send_json(200, {"ok": True, "deleted": note_id})
                     return
@@ -17075,7 +20762,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/artifacts", "/api/ai/artifacts"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    artifact_id = str(payload.get("id") or payload.get("artifactId") or "").strip()
+                    artifact_id = str(
+                        payload.get("id") or payload.get("artifactId") or ""
+                    ).strip()
                     self.state.delete_artifact(artifact_id)
                     self._send_json(200, {"ok": True, "deleted": artifact_id})
                     return
@@ -17084,7 +20773,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/tools", "/api/ai/tools"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    tool_id = str(payload.get("id") or payload.get("toolId") or "").strip()
+                    tool_id = str(
+                        payload.get("id") or payload.get("toolId") or ""
+                    ).strip()
                     self.state.delete_tool_server(tool_id)
                     self._send_json(200, {"ok": True, "deleted": tool_id})
                     return
@@ -17093,36 +20784,58 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/conversations", "/api/ai/conversations"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    convo_id = str(payload.get("id") or payload.get("conversationId") or "").strip()
+                    convo_id = str(
+                        payload.get("id") or payload.get("conversationId") or ""
+                    ).strip()
                     self.state.delete_conversation(convo_id)
                     self._send_json(200, {"ok": True, "deleted": convo_id})
                     return
                 if str(payload.get("action") or "").strip() == "import":
-                    raw = payload.get("content", payload.get("json", payload.get("data")))
+                    raw = payload.get(
+                        "content", payload.get("json", payload.get("data"))
+                    )
                     parsed: Any = raw
                     if isinstance(raw, str):
                         try:
                             parsed = json.loads(raw)
                         except json.JSONDecodeError:
-                            self._send_json(400, {"error": "import content must be valid JSON"})
+                            self._send_json(
+                                400, {"error": "import content must be valid JSON"}
+                            )
                             return
                     imported = _normalize_conversation_source_payload(parsed)
                     if not imported:
-                        self._send_json(400, {"error": "no conversations found in import payload"})
+                        self._send_json(
+                            400, {"error": "no conversations found in import payload"}
+                        )
                         return
                     conversations = settings.setdefault("conversations", [])
                     if not isinstance(conversations, list):
                         conversations = []
                         settings["conversations"] = conversations
-                    existing = {str(c.get("id")): c for c in conversations if isinstance(c, dict)}
+                    existing = {
+                        str(c.get("id")): c
+                        for c in conversations
+                        if isinstance(c, dict)
+                    }
                     for item in imported:
-                        if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
+                        if (
+                            not isinstance(item.get("id"), str)
+                            or not str(item.get("id")).strip()
+                        ):
                             item = dict(item)
-                            item["id"] = slugify(str(item.get("title") or "conversation"))
-                        if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+                            item["id"] = slugify(
+                                str(item.get("title") or "conversation")
+                            )
+                        if (
+                            not isinstance(item.get("title"), str)
+                            or not str(item.get("title")).strip()
+                        ):
                             item["title"] = str(item.get("id"))
                         existing[str(item.get("id"))] = item
-                    conversations[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+                    conversations[:] = sorted(
+                        existing.values(), key=lambda x: str(x.get("id", "")).lower()
+                    )
                     normalize_conversations(settings)
                     self.state._save()
                     self._send_json(200, {"data": {"conversations": conversations}})
@@ -17145,10 +20858,16 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if str(payload.get("action") or "").strip() == "share":
-                    convo_id = str(payload.get("id") or payload.get("conversationId") or "").strip()
-                    conversation = _find_conversation(_settings_conversations(settings), convo_id)
+                    convo_id = str(
+                        payload.get("id") or payload.get("conversationId") or ""
+                    ).strip()
+                    conversation = _find_conversation(
+                        _settings_conversations(settings), convo_id
+                    )
                     if conversation is None:
-                        self._send_json(404, {"error": f"conversation '{convo_id}' not found"})
+                        self._send_json(
+                            404, {"error": f"conversation '{convo_id}' not found"}
+                        )
                         return
                     fmt = str(payload.get("format") or "md").strip().lower()
                     if fmt == "html":
@@ -17168,7 +20887,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if str(payload.get("action") or "").strip() == "clone":
-                    convo_id = str(payload.get("id") or payload.get("conversationId") or "").strip()
+                    convo_id = str(
+                        payload.get("id") or payload.get("conversationId") or ""
+                    ).strip()
                     conversations = settings.setdefault("conversations", [])
                     if not isinstance(conversations, list):
                         conversations = []
@@ -17176,7 +20897,8 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     clone = _clone_registry_item(
                         conversations,
                         convo_id,
-                        new_id=str(payload.get("newId") or payload.get("new_id") or "") or None,
+                        new_id=str(payload.get("newId") or payload.get("new_id") or "")
+                        or None,
                         new_title=str(payload.get("title") or "").strip() or None,
                     )
                     conversations.append(clone)
@@ -17190,18 +20912,24 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             if self.path in ("/api/files", "/api/ai/files"):
                 if str(payload.get("action") or "").strip() == "delete":
-                    file_id = str(payload.get("id") or payload.get("fileId") or "").strip()
+                    file_id = str(
+                        payload.get("id") or payload.get("fileId") or ""
+                    ).strip()
                     self.state.delete_file(file_id)
                     self._send_json(200, {"ok": True, "deleted": file_id})
                     return
                 if str(payload.get("action") or "").strip() == "import":
-                    raw = payload.get("content", payload.get("json", payload.get("data")))
+                    raw = payload.get(
+                        "content", payload.get("json", payload.get("data"))
+                    )
                     parsed: Any = raw
                     if isinstance(raw, str):
                         try:
                             parsed = json.loads(raw)
                         except json.JSONDecodeError:
-                            self._send_json(400, {"error": "import content must be valid JSON"})
+                            self._send_json(
+                                400, {"error": "import content must be valid JSON"}
+                            )
                             return
                     imported = self.state.import_files(parsed)
                     self._send_json(200, {"data": {"files": imported}})
@@ -17213,20 +20941,29 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                         {
                             "data": {
                                 "files": files,
-                                "content": json.dumps({"files": files}, indent=2, ensure_ascii=False) + "\n",
+                                "content": json.dumps(
+                                    {"files": files}, indent=2, ensure_ascii=False
+                                )
+                                + "\n",
                             }
                         },
                     )
                     return
                 if str(payload.get("action") or "").strip() == "share":
-                    file_id = str(payload.get("id") or payload.get("fileId") or "").strip()
-                    file_item = _find_file(_settings_files(self.state.settings), file_id)
+                    file_id = str(
+                        payload.get("id") or payload.get("fileId") or ""
+                    ).strip()
+                    file_item = _find_file(
+                        _settings_files(self.state.settings), file_id
+                    )
                     if file_item is None:
                         self._send_json(404, {"error": f"file '{file_id}' not found"})
                         return
                     fmt = str(payload.get("format") or "md").strip().lower()
                     if fmt == "json":
-                        rendered = json.dumps(file_item, indent=2, ensure_ascii=False) + "\n"
+                        rendered = (
+                            json.dumps(file_item, indent=2, ensure_ascii=False) + "\n"
+                        )
                     elif fmt == "html":
                         rendered = _render_file_html(file_item)
                     else:
@@ -17244,10 +20981,13 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if str(payload.get("action") or "").strip() == "clone":
-                    file_id = str(payload.get("id") or payload.get("fileId") or "").strip()
+                    file_id = str(
+                        payload.get("id") or payload.get("fileId") or ""
+                    ).strip()
                     clone = self.state.clone_file(
                         file_id,
-                        new_id=str(payload.get("newId") or payload.get("new_id") or "") or None,
+                        new_id=str(payload.get("newId") or payload.get("new_id") or "")
+                        or None,
                         name=str(payload.get("name") or "").strip() or None,
                     )
                     self._send_json(200, {"data": {"file": clone}})
@@ -17270,7 +21010,11 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             if self.path not in ("/api/chat", "/api/ai/chat"):
                 self.send_error(404, "Not Found")
                 return
-            model_id = str(payload.get("model") or _settings_default_model(self.state.settings) or "").strip()
+            model_id = str(
+                payload.get("model")
+                or _settings_default_model(self.state.settings)
+                or ""
+            ).strip()
             if not model_id:
                 self._send_json(400, {"error": "model is required"})
                 return
@@ -17291,6 +21035,7 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
             if bool(payload.get("stream")):
                 self._send_stream_headers()
                 try:
+
                     def send_delta(delta: str) -> None:
                         self._send_stream_event({"type": "delta", "content": delta})
 
@@ -17313,11 +21058,15 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                             insecure=bool(payload.get("insecure")),
                             on_delta=send_delta,
                         )
-                    self._send_stream_event({"type": "done", "content": content, "response": response})
+                    self._send_stream_event(
+                        {"type": "done", "content": content, "response": response}
+                    )
                     conversation["messages"] = messages + [
                         {"role": "assistant", "content": content}
                     ]
-                    if isinstance(response, dict) and isinstance(response.get("usage"), dict):
+                    if isinstance(response, dict) and isinstance(
+                        response.get("usage"), dict
+                    ):
                         conversation["usage"] = dict(response["usage"])
                     self.state.upsert_conversation(conversation)
                     self.close_connection = True
@@ -17341,7 +21090,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 conversation["messages"] = messages + [
                     {"role": "assistant", "content": content}
                 ]
-                if isinstance(response, dict) and isinstance(response.get("usage"), dict):
+                if isinstance(response, dict) and isinstance(
+                    response.get("usage"), dict
+                ):
                     conversation["usage"] = dict(response["usage"])
                 self.state.upsert_conversation(conversation)
                 self._send_json(200, response)
@@ -17354,7 +21105,10 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
                 insecure=bool(payload.get("insecure")),
             )
             conversation["messages"] = messages + [
-                {"role": "assistant", "content": _chat_response_text(response, model_id)}
+                {
+                    "role": "assistant",
+                    "content": _chat_response_text(response, model_id),
+                }
             ]
             if isinstance(response, dict) and isinstance(response.get("usage"), dict):
                 conversation["usage"] = dict(response["usage"])
@@ -17370,7 +21124,9 @@ class QwenChatRequestHandler(http.server.BaseHTTPRequestHandler):
 class QwenChatState:
     settings_path: pathlib.Path
     settings: dict[str, Any]
-    _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
+    _lock: threading.RLock = field(
+        default_factory=threading.RLock, init=False, repr=False, compare=False
+    )
 
     @classmethod
     def load(cls, settings_path: pathlib.Path) -> "QwenChatState":
@@ -17433,7 +21189,10 @@ class QwenChatState:
                 item["id"] = f"{slugify(title)}-{int(time.time())}"
             else:
                 item["id"] = convo_id.strip()
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item["id"])
             if isinstance(item.get("messages"), list):
                 normalized_messages: list[dict[str, str]] = []
@@ -17448,17 +21207,22 @@ class QwenChatState:
                         and isinstance(content, str)
                         and content.strip()
                     ):
-                        normalized_messages.append({"role": role.strip(), "content": content})
+                        normalized_messages.append(
+                            {"role": role.strip(), "content": content}
+                        )
                 if normalized_messages:
                     item["messages"] = normalized_messages
                     item["transcript"] = "\n".join(
-                        f"{msg['role']}: {msg['content']}" for msg in normalized_messages
+                        f"{msg['role']}: {msg['content']}"
+                        for msg in normalized_messages
                     )
             conversations = self.settings.setdefault("conversations", [])
             if not isinstance(conversations, list):
                 conversations = []
                 self.settings["conversations"] = conversations
-            conversations[:] = [c for c in conversations if str(c.get("id")) != str(item["id"])]
+            conversations[:] = [
+                c for c in conversations if str(c.get("id")) != str(item["id"])
+            ]
             conversations.append(item)
             conversations.sort(key=lambda x: str(x.get("id", "")).lower())
             normalize_conversations(self.settings)
@@ -17473,11 +21237,19 @@ class QwenChatState:
             item = dict(template)
             template_id = item.get("id")
             if not isinstance(template_id, str) or not template_id.strip():
-                name = str(item.get("name") or item.get("title") or item.get("content") or "template").strip()
+                name = str(
+                    item.get("name")
+                    or item.get("title")
+                    or item.get("content")
+                    or "template"
+                ).strip()
                 item["id"] = f"{slugify(name)}-{int(time.time())}"
             else:
                 item["id"] = template_id.strip()
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item["id"])
             content = item.get("content")
             if not isinstance(content, str) or not content.strip():
@@ -17499,7 +21271,13 @@ class QwenChatState:
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -17510,7 +21288,11 @@ class QwenChatState:
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
             return next(
-                (entry for entry in templates if str(entry.get("id")) == str(item["id"])),
+                (
+                    entry
+                    for entry in templates
+                    if str(entry.get("id")) == str(item["id"])
+                ),
                 {
                     "id": str(item["id"]),
                     "name": str(item["name"]),
@@ -17525,11 +21307,19 @@ class QwenChatState:
             item = dict(note)
             note_id = item.get("id")
             if not isinstance(note_id, str) or not note_id.strip():
-                title = str(item.get("title") or item.get("body") or item.get("content") or "note").strip()
+                title = str(
+                    item.get("title")
+                    or item.get("body")
+                    or item.get("content")
+                    or "note"
+                ).strip()
                 item["id"] = slugify(title)
             else:
                 item["id"] = note_id.strip()
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item["id"])
             body = item.get("body", item.get("content"))
             if not isinstance(body, str) or not body.strip():
@@ -17538,22 +21328,34 @@ class QwenChatState:
             if not isinstance(notes, list):
                 notes = []
                 self.settings["notes"] = notes
-            notes[:] = [entry for entry in notes if str(entry.get("id")) != str(item["id"])]
+            notes[:] = [
+                entry for entry in notes if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "title": str(item["title"]).strip(),
                 "body": str(body),
             }
             if isinstance(item.get("files", item.get("attachments")), list):
-                files = [str(entry).strip() for entry in item.get("files", item.get("attachments", [])) if str(entry).strip()]
+                files = [
+                    str(entry).strip()
+                    for entry in item.get("files", item.get("attachments", []))
+                    if str(entry).strip()
+                ]
                 if files:
                     normalized["files"] = files
             if isinstance(item.get("images"), list):
-                images = [str(entry).strip() for entry in item.get("images", []) if str(entry).strip()]
+                images = [
+                    str(entry).strip()
+                    for entry in item.get("images", [])
+                    if str(entry).strip()
+                ]
                 if images:
                     normalized["images"] = images
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized["tags"] = tags
             if item.get("pinned") is not None:
@@ -17565,7 +21367,10 @@ class QwenChatState:
             normalize_notes(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in notes if str(entry.get("id")) == str(item["id"])), normalized)
+            return next(
+                (entry for entry in notes if str(entry.get("id")) == str(item["id"])),
+                normalized,
+            )
 
     def delete_note(self, note_id: str) -> None:
         note_id = note_id.strip()
@@ -17591,11 +21396,16 @@ class QwenChatState:
             item = dict(artifact)
             artifact_id = item.get("id")
             if not isinstance(artifact_id, str) or not artifact_id.strip():
-                title = str(item.get("title") or item.get("content") or "artifact").strip()
+                title = str(
+                    item.get("title") or item.get("content") or "artifact"
+                ).strip()
                 item["id"] = slugify(title)
             else:
                 item["id"] = artifact_id.strip()
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item["id"])
             content = item.get("content")
             if not isinstance(content, str) or not content.strip():
@@ -17604,7 +21414,9 @@ class QwenChatState:
             if not isinstance(artifacts, list):
                 artifacts = []
                 self.settings["artifacts"] = artifacts
-            artifacts[:] = [entry for entry in artifacts if str(entry.get("id")) != str(item["id"])]
+            artifacts[:] = [
+                entry for entry in artifacts if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "title": str(item["title"]).strip(),
@@ -17613,7 +21425,9 @@ class QwenChatState:
             if isinstance(item.get("kind"), str) and str(item.get("kind")).strip():
                 normalized["kind"] = str(item["kind"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized["tags"] = tags
             if item.get("pinned") is not None:
@@ -17625,7 +21439,14 @@ class QwenChatState:
             normalize_artifacts(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in artifacts if str(entry.get("id")) == str(item["id"])), normalized)
+            return next(
+                (
+                    entry
+                    for entry in artifacts
+                    if str(entry.get("id")) == str(item["id"])
+                ),
+                normalized,
+            )
 
     def delete_artifact(self, artifact_id: str) -> None:
         artifact_id = artifact_id.strip()
@@ -17637,7 +21458,9 @@ class QwenChatState:
                 artifacts = []
                 self.settings["artifacts"] = artifacts
             before = len(artifacts)
-            artifacts[:] = [entry for entry in artifacts if str(entry.get("id")) != artifact_id]
+            artifacts[:] = [
+                entry for entry in artifacts if str(entry.get("id")) != artifact_id
+            ]
             if len(artifacts) == before:
                 die(f"artifact '{artifact_id}' not found")
             normalize_artifacts(self.settings)
@@ -17651,11 +21474,16 @@ class QwenChatState:
             item = dict(knowledge_base)
             base_id = item.get("id")
             if not isinstance(base_id, str) or not base_id.strip():
-                name = str(item.get("name") or item.get("sourceDir") or "knowledge base").strip()
+                name = str(
+                    item.get("name") or item.get("sourceDir") or "knowledge base"
+                ).strip()
                 item["id"] = slugify(name)
             else:
                 item["id"] = base_id.strip()
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item["id"])
             source_dir = item.get("sourceDir")
             if not isinstance(source_dir, str) or not source_dir.strip():
@@ -17664,20 +21492,27 @@ class QwenChatState:
             if not isinstance(bases, list):
                 bases = []
                 self.settings["knowledgeBases"] = bases
-            bases[:] = [entry for entry in bases if str(entry.get("id")) != str(item["id"])]
+            bases[:] = [
+                entry for entry in bases if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "name": str(item["name"]).strip(),
                 "sourceDir": str(source_dir).strip(),
             }
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized["description"] = str(item["description"]).strip()
             if item.get("enabled") is not None:
                 normalized["enabled"] = bool(item["enabled"])
             for key in ("sources", "tags"):
                 value = item.get(key)
                 if isinstance(value, list):
-                    entries = [str(entry).strip() for entry in value if str(entry).strip()]
+                    entries = [
+                        str(entry).strip() for entry in value if str(entry).strip()
+                    ]
                     if entries:
                         normalized[key] = entries
             bases.append(normalized)
@@ -17685,7 +21520,10 @@ class QwenChatState:
             normalize_knowledge_bases(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in bases if str(entry.get("id")) == str(item["id"])), normalized)
+            return next(
+                (entry for entry in bases if str(entry.get("id")) == str(item["id"])),
+                normalized,
+            )
 
     def delete_knowledge_base(self, base_id: str) -> None:
         base_id = base_id.strip()
@@ -17719,7 +21557,9 @@ class QwenChatState:
             if not isinstance(bases, list):
                 bases = []
                 self.settings["knowledgeBases"] = bases
-            base = next((entry for entry in bases if str(entry.get("id")) == base_id), None)
+            base = next(
+                (entry for entry in bases if str(entry.get("id")) == base_id), None
+            )
             if base is None:
                 die(f"knowledge base '{base_id}' not found")
             source_label, index, refreshed_base = _refresh_knowledge_base_entry(
@@ -17733,7 +21573,9 @@ class QwenChatState:
             if not isinstance(indexes, list):
                 indexes = []
                 self.settings["knowledgeIndexes"] = indexes
-            indexes[:] = [item for item in indexes if str(item.get("baseId")) != base_id]
+            indexes[:] = [
+                item for item in indexes if str(item.get("baseId")) != base_id
+            ]
             indexes.append(index)
             indexes.sort(key=lambda x: str(x.get("id", "")).lower())
             bases[:] = [entry for entry in bases if str(entry.get("id")) != base_id]
@@ -17744,11 +21586,15 @@ class QwenChatState:
             atomic_write_json(self.settings_path, self.settings)
             return source_label, index, refreshed_base
 
-    def import_knowledge_sources(self, payload: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    def import_knowledge_sources(
+        self, payload: Any
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         bases_payload = _normalize_knowledge_source_payload(payload)
         indexes_payload = _normalize_knowledge_index_payload(payload)
         if not bases_payload and not indexes_payload:
-            die("knowledge source import must include knowledgeBases or knowledgeIndexes")
+            die(
+                "knowledge source import must include knowledgeBases or knowledgeIndexes"
+            )
         with self._lock:
             bases = self.settings.setdefault("knowledgeBases", [])
             if not isinstance(bases, list):
@@ -17758,28 +21604,50 @@ class QwenChatState:
             if not isinstance(indexes, list):
                 indexes = []
                 self.settings["knowledgeIndexes"] = indexes
-            merged_bases = {str(item.get("id")): item for item in bases if isinstance(item, dict)}
+            merged_bases = {
+                str(item.get("id")): item for item in bases if isinstance(item, dict)
+            }
             for item in bases_payload:
                 if not isinstance(item, dict):
                     continue
-                if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
+                if (
+                    not isinstance(item.get("id"), str)
+                    or not str(item.get("id")).strip()
+                ):
                     item = dict(item)
                     item["id"] = slugify(str(item.get("name") or "knowledge"))
-                if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+                if (
+                    not isinstance(item.get("name"), str)
+                    or not str(item.get("name")).strip()
+                ):
                     item["name"] = str(item.get("id"))
                 merged_bases[str(item.get("id"))] = item
-            merged_indexes = {str(item.get("id")): item for item in indexes if isinstance(item, dict)}
+            merged_indexes = {
+                str(item.get("id")): item for item in indexes if isinstance(item, dict)
+            }
             for item in indexes_payload:
                 if not isinstance(item, dict):
                     continue
-                if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
+                if (
+                    not isinstance(item.get("id"), str)
+                    or not str(item.get("id")).strip()
+                ):
                     item = dict(item)
-                    item["id"] = slugify(str(item.get("name") or item.get("baseId") or "knowledge-index"))
-                if not isinstance(item.get("baseId"), str) or not str(item.get("baseId")).strip():
+                    item["id"] = slugify(
+                        str(item.get("name") or item.get("baseId") or "knowledge-index")
+                    )
+                if (
+                    not isinstance(item.get("baseId"), str)
+                    or not str(item.get("baseId")).strip()
+                ):
                     item["baseId"] = str(item.get("id"))
                 merged_indexes[str(item.get("id"))] = item
-            bases[:] = sorted(merged_bases.values(), key=lambda x: str(x.get("id", "")).lower())
-            indexes[:] = sorted(merged_indexes.values(), key=lambda x: str(x.get("id", "")).lower())
+            bases[:] = sorted(
+                merged_bases.values(), key=lambda x: str(x.get("id", "")).lower()
+            )
+            indexes[:] = sorted(
+                merged_indexes.values(), key=lambda x: str(x.get("id", "")).lower()
+            )
             normalize_knowledge_bases(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
@@ -17836,9 +21704,13 @@ class QwenChatState:
                     )
                 eprint(f"Synced knowledge base: {current_base_id} ({source_label})")
             refreshed_ids = {str(item.get("id")) for item in refreshed_bases}
-            remaining_bases = [b for b in bases if str(b.get("id")) not in refreshed_ids]
+            remaining_bases = [
+                b for b in bases if str(b.get("id")) not in refreshed_ids
+            ]
             remaining_bases.extend(refreshed_bases)
-            bases[:] = sorted(remaining_bases, key=lambda x: str(x.get("id", "")).lower())
+            bases[:] = sorted(
+                remaining_bases, key=lambda x: str(x.get("id", "")).lower()
+            )
             indexes[:] = sorted(indexes, key=lambda x: str(x.get("id", "")).lower())
             normalize_knowledge_bases(self.settings)
             self.settings["$version"] = 4
@@ -17846,7 +21718,9 @@ class QwenChatState:
             manifest = {
                 "knowledgeBases": bases,
                 "knowledgeIndexes": indexes,
-                "refreshed": [str(item.get("baseId", "")) for item in refreshed_indexes],
+                "refreshed": [
+                    str(item.get("baseId", "")) for item in refreshed_indexes
+                ],
             }
             if output_dir is not None:
                 (output_dir / "manifest.json").write_text(
@@ -17888,11 +21762,19 @@ class QwenChatState:
             item = dict(tool_server)
             server_id = item.get("id")
             if not isinstance(server_id, str) or not server_id.strip():
-                name = str(item.get("name") or item.get("endpoint") or item.get("url") or "tool server").strip()
+                name = str(
+                    item.get("name")
+                    or item.get("endpoint")
+                    or item.get("url")
+                    or "tool server"
+                ).strip()
                 item["id"] = slugify(name)
             else:
                 item["id"] = server_id.strip()
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item["id"])
             endpoint = item.get("endpoint", item.get("url"))
             if not isinstance(endpoint, str) or not endpoint.strip():
@@ -17901,7 +21783,9 @@ class QwenChatState:
             if not isinstance(servers, list):
                 servers = []
                 self.settings["toolServers"] = servers
-            servers[:] = [entry for entry in servers if str(entry.get("id")) != str(item["id"])]
+            servers[:] = [
+                entry for entry in servers if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "name": str(item["name"]).strip(),
@@ -17909,14 +21793,19 @@ class QwenChatState:
             }
             if isinstance(item.get("type"), str) and str(item.get("type")).strip():
                 normalized["type"] = str(item["type"]).strip()
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized["description"] = str(item["description"]).strip()
             if item.get("auth") is not None:
                 normalized["auth"] = item["auth"]
             if item.get("enabled") is not None:
                 normalized["enabled"] = bool(item["enabled"])
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized["tags"] = tags
             servers.append(normalized)
@@ -17924,7 +21813,10 @@ class QwenChatState:
             normalize_tool_servers(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in servers if str(entry.get("id")) == str(item["id"])), normalized)
+            return next(
+                (entry for entry in servers if str(entry.get("id")) == str(item["id"])),
+                normalized,
+            )
 
     def delete_tool_server(self, tool_server_id: str) -> None:
         tool_server_id = tool_server_id.strip()
@@ -17936,7 +21828,9 @@ class QwenChatState:
                 servers = []
                 self.settings["toolServers"] = servers
             before = len(servers)
-            servers[:] = [entry for entry in servers if str(entry.get("id")) != tool_server_id]
+            servers[:] = [
+                entry for entry in servers if str(entry.get("id")) != tool_server_id
+            ]
             if len(servers) == before:
                 die(f"tool server '{tool_server_id}' not found")
             normalize_tool_servers(self.settings)
@@ -17952,7 +21846,9 @@ class QwenChatState:
             if not isinstance(conversations, list):
                 conversations = []
                 self.settings["conversations"] = conversations
-            conversations[:] = [c for c in conversations if str(c.get("id")) != convo_id]
+            conversations[:] = [
+                c for c in conversations if str(c.get("id")) != convo_id
+            ]
             normalize_conversations(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
@@ -18025,7 +21921,10 @@ class QwenChatState:
 
             errors = validate_settings(settings)
             if errors:
-                die("generated configuration failed validation:\n- " + "\n- ".join(errors))
+                die(
+                    "generated configuration failed validation:\n- "
+                    + "\n- ".join(errors)
+                )
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
             return added
@@ -18066,13 +21965,18 @@ class QwenChatState:
                 item["id"] = slugify(name)
             else:
                 item["id"] = folder_id.strip()
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item["id"])
             folders = self.settings.setdefault("folders", [])
             if not isinstance(folders, list):
                 folders = []
                 self.settings["folders"] = folders
-            folders[:] = [entry for entry in folders if str(entry.get("id")) != str(item["id"])]
+            folders[:] = [
+                entry for entry in folders if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "name": str(item["name"]).strip(),
@@ -18084,7 +21988,9 @@ class QwenChatState:
             for key in ("knowledge", "tags"):
                 value = item.get(key)
                 if isinstance(value, list):
-                    entries = [str(entry).strip() for entry in value if str(entry).strip()]
+                    entries = [
+                        str(entry).strip() for entry in value if str(entry).strip()
+                    ]
                     if entries:
                         normalized[key] = entries
             if item.get("pinned") is not None:
@@ -18116,13 +22022,18 @@ class QwenChatState:
                 folders = []
                 self.settings["folders"] = folders
             before = len(folders)
-            folders[:] = [entry for entry in folders if str(entry.get("id")) != folder_id]
+            folders[:] = [
+                entry for entry in folders if str(entry.get("id")) != folder_id
+            ]
             if len(folders) == before:
                 die(f"workspace '{folder_id}' not found")
             conversations = self.settings.setdefault("conversations", [])
             if isinstance(conversations, list):
                 for convo in conversations:
-                    if isinstance(convo, dict) and str(convo.get("folderId", "")) == folder_id:
+                    if (
+                        isinstance(convo, dict)
+                        and str(convo.get("folderId", "")) == folder_id
+                    ):
                         convo["folderId"] = ""
             normalize_folders(self.settings)
             normalize_conversations(self.settings)
@@ -18136,17 +22047,27 @@ class QwenChatState:
             item = dict(file_item)
             file_id = item.get("id")
             if not isinstance(file_id, str) or not file_id.strip():
-                name = str(item.get("name") or item.get("title") or item.get("path") or "file").strip()
+                name = str(
+                    item.get("name") or item.get("title") or item.get("path") or "file"
+                ).strip()
                 item["id"] = f"{slugify(name)}-{int(time.time())}"
             else:
                 item["id"] = file_id.strip()
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item["id"])
             content = item.get("content")
             if not isinstance(content, str) or not content.strip():
                 die("file content is required")
-            if not isinstance(item.get("kind"), str) or not str(item.get("kind")).strip():
-                guessed_kind, _ = mimetypes.guess_type(str(item.get("name") or item.get("path") or item["id"]))
+            if (
+                not isinstance(item.get("kind"), str)
+                or not str(item.get("kind")).strip()
+            ):
+                guessed_kind, _ = mimetypes.guess_type(
+                    str(item.get("name") or item.get("path") or item["id"])
+                )
                 item["kind"] = guessed_kind or "text"
             files = self.settings.setdefault("files", [])
             if not isinstance(files, list):
@@ -18160,21 +22081,30 @@ class QwenChatState:
                     "content": str(content),
                     **(
                         {"path": str(item["path"]).strip()}
-                        if isinstance(item.get("path"), str) and str(item.get("path")).strip()
+                        if isinstance(item.get("path"), str)
+                        and str(item.get("path")).strip()
                         else {}
                     ),
                     **(
                         {"kind": str(item["kind"]).strip()}
-                        if isinstance(item.get("kind"), str) and str(item.get("kind")).strip()
+                        if isinstance(item.get("kind"), str)
+                        and str(item.get("kind")).strip()
                         else {}
                     ),
                     **(
                         {"description": str(item["description"]).strip()}
-                        if isinstance(item.get("description"), str) and str(item.get("description")).strip()
+                        if isinstance(item.get("description"), str)
+                        and str(item.get("description")).strip()
                         else {}
                     ),
                     **(
-                        {"tags": [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]}
+                        {
+                            "tags": [
+                                str(tag).strip()
+                                for tag in item.get("tags", [])
+                                if str(tag).strip()
+                            ]
+                        }
                         if isinstance(item.get("tags"), list)
                         else {}
                     ),
@@ -18190,7 +22120,10 @@ class QwenChatState:
             normalize_files(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in files if str(entry.get("id")) == str(item["id"])), files[-1])
+            return next(
+                (entry for entry in files if str(entry.get("id")) == str(item["id"])),
+                files[-1],
+            )
 
     def upsert_skill(self, skill: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(skill, dict):
@@ -18199,11 +22132,19 @@ class QwenChatState:
             item = dict(skill)
             skill_id = item.get("id")
             if not isinstance(skill_id, str) or not skill_id.strip():
-                name = str(item.get("name") or item.get("title") or item.get("content") or "skill").strip()
+                name = str(
+                    item.get("name")
+                    or item.get("title")
+                    or item.get("content")
+                    or "skill"
+                ).strip()
                 item["id"] = slugify(name)
             else:
                 item["id"] = skill_id.strip()
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item["id"])
             content = item.get("content", item.get("instructions"))
             if not isinstance(content, str) or not content.strip():
@@ -18212,16 +22153,23 @@ class QwenChatState:
             if not isinstance(skills, list):
                 skills = []
                 self.settings["skills"] = skills
-            skills[:] = [entry for entry in skills if str(entry.get("id")) != str(item["id"])]
+            skills[:] = [
+                entry for entry in skills if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "name": str(item["name"]).strip(),
                 "content": str(content),
             }
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized["description"] = str(item["description"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized["tags"] = tags
             if item.get("pinned") is not None:
@@ -18233,7 +22181,10 @@ class QwenChatState:
             normalize_skills(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in skills if str(entry.get("id")) == str(item["id"])), normalized)
+            return next(
+                (entry for entry in skills if str(entry.get("id")) == str(item["id"])),
+                normalized,
+            )
 
     def delete_skill(self, skill_id: str) -> None:
         skill_id = skill_id.strip()
@@ -18259,21 +22210,33 @@ class QwenChatState:
             item = dict(agent)
             agent_id = item.get("id")
             if not isinstance(agent_id, str) or not agent_id.strip():
-                name = str(item.get("name") or item.get("baseModel") or item.get("model") or "agent").strip()
+                name = str(
+                    item.get("name")
+                    or item.get("baseModel")
+                    or item.get("model")
+                    or "agent"
+                ).strip()
                 item["id"] = slugify(name)
             else:
                 item["id"] = agent_id.strip()
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item["id"])
             base_model = item.get("baseModel", item.get("model"))
             if not isinstance(base_model, str) or not base_model.strip():
                 die("agent baseModel is required")
-            system_prompt = item.get("systemPrompt", item.get("instructions", item.get("prompt")))
+            system_prompt = item.get(
+                "systemPrompt", item.get("instructions", item.get("prompt"))
+            )
             agents = self.settings.setdefault("agents", [])
             if not isinstance(agents, list):
                 agents = []
                 self.settings["agents"] = agents
-            agents[:] = [entry for entry in agents if str(entry.get("id")) != str(item["id"])]
+            agents[:] = [
+                entry for entry in agents if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "name": str(item["name"]).strip(),
@@ -18281,7 +22244,10 @@ class QwenChatState:
             }
             if isinstance(system_prompt, str) and system_prompt.strip():
                 normalized["systemPrompt"] = system_prompt.strip()
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized["description"] = str(item["description"]).strip()
             folder_id = item.get("folderId", item.get("folder"))
             if isinstance(folder_id, str) and str(folder_id).strip():
@@ -18289,7 +22255,9 @@ class QwenChatState:
             for key in ("tags", "tools", "knowledge", "skills"):
                 value = item.get(key)
                 if isinstance(value, list):
-                    entries = [str(entry).strip() for entry in value if str(entry).strip()]
+                    entries = [
+                        str(entry).strip() for entry in value if str(entry).strip()
+                    ]
                     if entries:
                         normalized[key] = entries
             if isinstance(item.get("parameters"), dict):
@@ -18298,7 +22266,10 @@ class QwenChatState:
                 normalized["avatar"] = str(item["avatar"]).strip()
             if isinstance(item.get("voice"), str) and str(item.get("voice")).strip():
                 normalized["voice"] = str(item["voice"]).strip()
-            if isinstance(item.get("visibility"), str) and str(item.get("visibility")).strip():
+            if (
+                isinstance(item.get("visibility"), str)
+                and str(item.get("visibility")).strip()
+            ):
                 normalized["visibility"] = str(item["visibility"]).strip()
             if item.get("pinned") is not None:
                 normalized["pinned"] = bool(item["pinned"])
@@ -18309,7 +22280,10 @@ class QwenChatState:
             normalize_agents(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in agents if str(entry.get("id")) == str(item["id"])), normalized)
+            return next(
+                (entry for entry in agents if str(entry.get("id")) == str(item["id"])),
+                normalized,
+            )
 
     def delete_agent(self, agent_id: str) -> None:
         agent_id = agent_id.strip()
@@ -18339,7 +22313,10 @@ class QwenChatState:
                 item["id"] = slugify(name)
             else:
                 item["id"] = webhook_id.strip()
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item["id"])
             url = item.get("url")
             if not isinstance(url, str) or not url.strip():
@@ -18348,7 +22325,18 @@ class QwenChatState:
             if not isinstance(webhooks, list):
                 webhooks = []
                 self.settings["webhooks"] = webhooks
-            webhooks[:] = [entry for entry in webhooks if str(entry.get("id")) != str(item["id"])]
+            existing = next(
+                (
+                    entry
+                    for entry in webhooks
+                    if str(entry.get("id")) == str(item["id"])
+                    and isinstance(entry, dict)
+                ),
+                None,
+            )
+            webhooks[:] = [
+                entry for entry in webhooks if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "name": str(item["name"]).strip(),
@@ -18359,12 +22347,21 @@ class QwenChatState:
                 entries = [str(entry).strip() for entry in events if str(entry).strip()]
                 if entries:
                     normalized["events"] = entries
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized["description"] = str(item["description"]).strip()
             if isinstance(item.get("secret"), str) and str(item.get("secret")).strip():
                 normalized["secret"] = str(item["secret"]).strip()
+            elif (
+                isinstance(existing, dict) and str(existing.get("secret") or "").strip()
+            ):
+                normalized["secret"] = str(existing["secret"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized["tags"] = tags
             if item.get("enabled") is not None:
@@ -18374,7 +22371,16 @@ class QwenChatState:
             normalize_webhooks(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in webhooks if str(entry.get("id")) == str(item["id"])), normalized)
+            return _public_webhook(
+                next(
+                    (
+                        entry
+                        for entry in webhooks
+                        if str(entry.get("id")) == str(item["id"])
+                    ),
+                    normalized,
+                )
+            )
 
     def delete_webhook(self, webhook_id: str) -> None:
         webhook_id = webhook_id.strip()
@@ -18386,7 +22392,9 @@ class QwenChatState:
                 webhooks = []
                 self.settings["webhooks"] = webhooks
             before = len(webhooks)
-            webhooks[:] = [entry for entry in webhooks if str(entry.get("id")) != webhook_id]
+            webhooks[:] = [
+                entry for entry in webhooks if str(entry.get("id")) != webhook_id
+            ]
             if len(webhooks) == before:
                 die(f"webhook '{webhook_id}' not found")
             normalize_webhooks(self.settings)
@@ -18400,11 +22408,16 @@ class QwenChatState:
             item = dict(memory)
             memory_id = item.get("id")
             if not isinstance(memory_id, str) or not memory_id.strip():
-                title = str(item.get("title") or item.get("content") or "memory").strip()
+                title = str(
+                    item.get("title") or item.get("content") or "memory"
+                ).strip()
                 item["id"] = slugify(title)
             else:
                 item["id"] = memory_id.strip()
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item["id"])
             content = item.get("content")
             if not isinstance(content, str) or not content.strip():
@@ -18413,7 +22426,9 @@ class QwenChatState:
             if not isinstance(memories, list):
                 memories = []
                 self.settings["memories"] = memories
-            memories[:] = [entry for entry in memories if str(entry.get("id")) != str(item["id"])]
+            memories[:] = [
+                entry for entry in memories if str(entry.get("id")) != str(item["id"])
+            ]
             normalized: dict[str, Any] = {
                 "id": str(item["id"]),
                 "title": str(item["title"]).strip(),
@@ -18424,7 +22439,9 @@ class QwenChatState:
             if isinstance(item.get("source"), str) and str(item.get("source")).strip():
                 normalized["source"] = str(item["source"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized["tags"] = tags
             if item.get("pinned") is not None:
@@ -18436,7 +22453,14 @@ class QwenChatState:
             normalize_memories(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
-            return next((entry for entry in memories if str(entry.get("id")) == str(item["id"])), normalized)
+            return next(
+                (
+                    entry
+                    for entry in memories
+                    if str(entry.get("id")) == str(item["id"])
+                ),
+                normalized,
+            )
 
     def delete_memory(self, memory_id: str) -> None:
         memory_id = memory_id.strip()
@@ -18448,7 +22472,9 @@ class QwenChatState:
                 memories = []
                 self.settings["memories"] = memories
             before = len(memories)
-            memories[:] = [entry for entry in memories if str(entry.get("id")) != memory_id]
+            memories[:] = [
+                entry for entry in memories if str(entry.get("id")) != memory_id
+            ]
             if len(memories) == before:
                 die(f"memory '{memory_id}' not found")
             normalize_memories(self.settings)
@@ -18478,25 +22504,42 @@ class QwenChatState:
             if not isinstance(files, list):
                 files = []
                 self.settings["files"] = files
-            existing = {str(item.get("id")): item for item in files if isinstance(item, dict)}
+            existing = {
+                str(item.get("id")): item for item in files if isinstance(item, dict)
+            }
             for item in imported:
                 if not isinstance(item, dict):
                     continue
-                if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
+                if (
+                    not isinstance(item.get("id"), str)
+                    or not str(item.get("id")).strip()
+                ):
                     item = dict(item)
-                    item["id"] = slugify(str(item.get("name") or item.get("title") or "file"))
-                if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+                    item["id"] = slugify(
+                        str(item.get("name") or item.get("title") or "file")
+                    )
+                if (
+                    not isinstance(item.get("name"), str)
+                    or not str(item.get("name")).strip()
+                ):
                     item["name"] = str(item.get("id"))
-                if not isinstance(item.get("content"), str) or not str(item.get("content")).strip():
+                if (
+                    not isinstance(item.get("content"), str)
+                    or not str(item.get("content")).strip()
+                ):
                     continue
                 existing[str(item.get("id"))] = item
-            files[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+            files[:] = sorted(
+                existing.values(), key=lambda x: str(x.get("id", "")).lower()
+            )
             normalize_files(self.settings)
             self.settings["$version"] = 4
             atomic_write_json(self.settings_path, self.settings)
             return files
 
-    def clone_file(self, file_id: str, new_id: str | None = None, name: str | None = None) -> dict[str, Any]:
+    def clone_file(
+        self, file_id: str, new_id: str | None = None, name: str | None = None
+    ) -> dict[str, Any]:
         file_id = file_id.strip()
         if not file_id:
             die("file id is required")
@@ -18573,7 +22616,14 @@ def command_folders(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "NAME", "PARENT", "UNREAD"))
         print("-" * 100)
         for item in folders:
-            print(fmt.format(str(item.get("id", "")), str(item.get("name", ""))[:24], str(item.get("parentId", ""))[:18], str(item.get("unreadCount", 0))[:12]))
+            print(
+                fmt.format(
+                    str(item.get("id", "")),
+                    str(item.get("name", ""))[:24],
+                    str(item.get("parentId", ""))[:18],
+                    str(item.get("unreadCount", 0))[:12],
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -18597,7 +22647,9 @@ def command_folders(args: argparse.Namespace) -> int:
             new_folder["archived"] = args.archived
         if args.unread_count is not None:
             new_folder["unreadCount"] = args.unread_count
-        folders[:] = [folder for folder in folders if str(folder.get("id")) != folder_id]
+        folders[:] = [
+            folder for folder in folders if str(folder.get("id")) != folder_id
+        ]
         folders.append(new_folder)
         folders.sort(key=lambda x: str(x.get("id", "")).lower())
     elif args.action == "remove":
@@ -18610,17 +22662,26 @@ def command_folders(args: argparse.Namespace) -> int:
         imported = _load_folder_source(source)
         if not imported:
             die(f"no folders found in {source}")
-        existing = {str(folder.get("id")): folder for folder in folders if isinstance(folder, dict)}
+        existing = {
+            str(folder.get("id")): folder
+            for folder in folders
+            if isinstance(folder, dict)
+        }
         for item in imported:
             if not isinstance(item, dict):
                 continue
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "folder"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        folders[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        folders[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"folders": folders}
@@ -18628,7 +22689,9 @@ def command_folders(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported folders: {output}")
         return 0
     elif args.action == "share":
@@ -18649,7 +22712,14 @@ def command_folders(args: argparse.Namespace) -> int:
         print(f"Shared folder: {output}")
         return 0
     elif args.action == "clone":
-        folder = next((item for item in folders if isinstance(item, dict) and str(item.get("id")) == args.id), None)
+        folder = next(
+            (
+                item
+                for item in folders
+                if isinstance(item, dict) and str(item.get("id")) == args.id
+            ),
+            None,
+        )
         if folder is None:
             die(f"folder '{args.id}' not found")
         clone = dict(folder)
@@ -18797,7 +22867,9 @@ def command_conversations(args: argparse.Namespace) -> int:
             if messages:
                 new_convo["messages"] = messages
                 if "transcript" not in new_convo:
-                    new_convo["transcript"] = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+                    new_convo["transcript"] = "\n".join(
+                        f"{m['role']}: {m['content']}" for m in messages
+                    )
         if args.tag:
             new_convo["tags"] = [tag for tag in args.tag if tag]
         if args.pinned is not None:
@@ -18824,10 +22896,15 @@ def command_conversations(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("title") or "conversation"))
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        conversations[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        conversations[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"conversations": conversations}
@@ -18835,7 +22912,9 @@ def command_conversations(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported conversations: {output}")
         return 0
     elif args.action == "share":
@@ -18900,18 +22979,26 @@ def _load_channel_source(source: pathlib.Path) -> list[dict[str, Any]]:
     return _load_conversation_source(source)
 
 
-def _find_channel(channels: list[dict[str, Any]], channel_id: str) -> dict[str, Any] | None:
+def _find_channel(
+    channels: list[dict[str, Any]], channel_id: str
+) -> dict[str, Any] | None:
     return _find_conversation(channels, channel_id)
 
 
 def render_channel_md(channel: dict[str, Any]) -> str:
     rendered = render_conversation_md(channel)
-    return rendered.replace("# Conversation", "# Channel").replace("Conversation", "Channel")
+    return rendered.replace("# Conversation", "# Channel").replace(
+        "Conversation", "Channel"
+    )
 
 
 def render_channel_html(channel: dict[str, Any]) -> str:
     rendered = render_conversation_html(channel)
-    return rendered.replace("data-conversation-id", "data-channel-id").replace("Conversation ID", "Channel ID").replace("Conversation", "Channel")
+    return (
+        rendered.replace("data-conversation-id", "data-channel-id")
+        .replace("Conversation ID", "Channel ID")
+        .replace("Conversation", "Channel")
+    )
 
 
 def command_channels(args: argparse.Namespace) -> int:
@@ -19003,7 +23090,9 @@ def command_channels(args: argparse.Namespace) -> int:
             if messages:
                 new_channel["messages"] = messages
                 if "transcript" not in new_channel:
-                    new_channel["transcript"] = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+                    new_channel["transcript"] = "\n".join(
+                        f"{m['role']}: {m['content']}" for m in messages
+                    )
         if args.tag:
             new_channel["tags"] = [tag for tag in args.tag if tag]
         if args.pinned is not None:
@@ -19030,10 +23119,15 @@ def command_channels(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("title") or "channel"))
-            if not isinstance(item.get("title"), str) or not str(item.get("title")).strip():
+            if (
+                not isinstance(item.get("title"), str)
+                or not str(item.get("title")).strip()
+            ):
                 item["title"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        channels[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        channels[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"channels": channels}
@@ -19041,7 +23135,9 @@ def command_channels(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported channels: {output}")
         return 0
     elif args.action == "share":
@@ -19128,7 +23224,9 @@ def _load_webhook_source(source: pathlib.Path) -> list[dict[str, Any]]:
     die("webhook import expects a JSON file or directory")
 
 
-def _find_webhook(webhooks: list[dict[str, Any]], webhook_id: str) -> dict[str, Any] | None:
+def _find_webhook(
+    webhooks: list[dict[str, Any]], webhook_id: str
+) -> dict[str, Any] | None:
     for hook in webhooks:
         if str(hook.get("id")) == webhook_id:
             return hook
@@ -19136,6 +23234,7 @@ def _find_webhook(webhooks: list[dict[str, Any]], webhook_id: str) -> dict[str, 
 
 
 def render_webhook_md(hook: dict[str, Any]) -> str:
+    hook = _public_webhook(hook)
     title = str(hook.get("name") or hook.get("id") or "Webhook").strip()
     lines = [f"# {title}", ""]
     for key, label in (("id", "ID"), ("url", "URL")):
@@ -19147,37 +23246,48 @@ def render_webhook_md(hook: dict[str, Any]) -> str:
         event_line = ", ".join(str(event) for event in events if str(event).strip())
         if event_line:
             lines.append(f"- Events: {event_line}")
-    for key, label in (("description", "Description"), ("secret", "Secret")):
+    for key, label in (("description", "Description"),):
         value = hook.get(key)
         if isinstance(value, str) and value.strip():
             lines.extend(["", f"## {label}", value.strip()])
+    if hook.get("secretConfigured"):
+        lines.extend(["", "## Secret", "Configured (value omitted)"])
     return "\n".join(lines).strip() + "\n"
 
 
 def render_webhook_html(hook: dict[str, Any]) -> str:
+    hook = _public_webhook(hook)
     title = html_escape(str(hook.get("name") or hook.get("id") or "Webhook"))
     hook_id = html_escape(str(hook.get("id") or "webhook"))
     meta_parts: list[str] = []
     url = hook.get("url")
     if isinstance(url, str) and url.strip():
-        meta_parts.append(f"<p class=\"meta\">URL: {html_escape(url.strip())}</p>")
+        meta_parts.append(f'<p class="meta">URL: {html_escape(url.strip())}</p>')
     events = hook.get("events")
     if isinstance(events, list):
-        event_line = ", ".join(html_escape(str(event)) for event in events if str(event).strip())
+        event_line = ", ".join(
+            html_escape(str(event)) for event in events if str(event).strip()
+        )
         if event_line:
-            meta_parts.append(f"<p class=\"tags\">Events: {event_line}</p>")
+            meta_parts.append(f'<p class="tags">Events: {event_line}</p>')
     tags = hook.get("tags")
     if isinstance(tags, list):
         tag_line = ", ".join(html_escape(str(tag)) for tag in tags if str(tag).strip())
         if tag_line:
-            meta_parts.append(f"<p class=\"tags\">Tags: {tag_line}</p>")
-    for key, label in (("description", "Description"), ("secret", "Secret")):
+            meta_parts.append(f'<p class="tags">Tags: {tag_line}</p>')
+    for key, label in (("description", "Description"),):
         value = hook.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<pre class=\"{label.lower()}\">{html_escape(value.strip())}</pre>")
+            meta_parts.append(
+                f'<pre class="{label.lower()}">{html_escape(value.strip())}</pre>'
+            )
+    if hook.get("secretConfigured"):
+        meta_parts.append('<pre class="secret">Configured (value omitted)</pre>')
     enabled = hook.get("enabled")
     if enabled is not None:
-        meta_parts.append(f"<p class=\"meta\">Enabled: {html_escape(str(bool(enabled)))}</p>")
+        meta_parts.append(
+            f'<p class="meta">Enabled: {html_escape(str(bool(enabled)))}</p>'
+        )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -19197,7 +23307,7 @@ def render_webhook_html(hook: dict[str, Any]) -> str:
   <article class=\"card\" data-webhook-id=\"{hook_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">Webhook ID: {hook_id}</p>
-    {''.join(meta_parts)}
+    {"".join(meta_parts)}
   </article>
 </body>
 </html>
@@ -19233,12 +23343,17 @@ def normalize_webhooks(settings: dict[str, Any]) -> list[dict[str, Any]]:
                 cleaned = [str(event).strip() for event in events if str(event).strip()]
                 if cleaned:
                     normalized_item["events"] = cleaned
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 normalized_item["description"] = str(item["description"]).strip()
             if isinstance(item.get("secret"), str) and str(item.get("secret")).strip():
                 normalized_item["secret"] = str(item["secret"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     normalized_item["tags"] = tags
             if item.get("enabled") is not None:
@@ -19250,7 +23365,9 @@ def normalize_webhooks(settings: dict[str, Any]) -> list[dict[str, Any]]:
         normalized = []
         for key, value in webhooks.items():
             if isinstance(value, str):
-                normalized.append({"id": str(key).strip(), "name": str(key).strip(), "url": value})
+                normalized.append(
+                    {"id": str(key).strip(), "name": str(key).strip(), "url": value}
+                )
                 continue
             if isinstance(value, dict):
                 item = dict(value)
@@ -19305,7 +23422,11 @@ def command_webhooks(args: argparse.Namespace) -> int:
         print("-" * 80)
         for item in webhooks:
             status = "enabled" if item.get("enabled", True) else "disabled"
-            print(fmt.format(str(item.get("id", "")), str(item.get("name", ""))[:28], status))
+            print(
+                fmt.format(
+                    str(item.get("id", "")), str(item.get("name", ""))[:28], status
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -19345,18 +23466,25 @@ def command_webhooks(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "webhook"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
-        webhooks[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        webhooks[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
-        payload = {"webhooks": webhooks}
+        payload = {"webhooks": [_public_webhook(hook) for hook in webhooks]}
         if args.dry_run:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported webhooks: {output}")
         return 0
     elif args.action == "share":
@@ -19364,12 +23492,13 @@ def command_webhooks(args: argparse.Namespace) -> int:
         if hook is None:
             die(f"webhook '{args.id}' not found")
         output = pathlib.Path(args.output).expanduser()
+        public_hook = _public_webhook(hook)
         if args.format == "json":
-            rendered = json.dumps(hook, indent=2, ensure_ascii=False) + "\n"
+            rendered = json.dumps(public_hook, indent=2, ensure_ascii=False) + "\n"
         elif args.format == "html":
-            rendered = render_webhook_html(hook)
+            rendered = render_webhook_html(public_hook)
         else:
-            rendered = render_webhook_md(hook)
+            rendered = render_webhook_md(public_hook)
         if args.dry_run:
             sys.stdout.write(rendered)
             return 0
@@ -19401,7 +23530,12 @@ def command_webhooks(args: argparse.Namespace) -> int:
         webhooks.append(clone)
         webhooks.sort(key=lambda x: str(x.get("id", "")).lower())
         if args.dry_run:
-            json.dump({"webhook": clone}, sys.stdout, indent=2, ensure_ascii=False)
+            json.dump(
+                {"webhook": _public_webhook(clone)},
+                sys.stdout,
+                indent=2,
+                ensure_ascii=False,
+            )
             print()
             return 0
         saved_backup = backup(path)
@@ -19486,10 +23620,15 @@ def _load_file_source(source: pathlib.Path) -> list[dict[str, Any]]:
                 file_item["path"] = str(item["path"]).strip()
             if isinstance(item.get("kind"), str) and str(item.get("kind")).strip():
                 file_item["kind"] = str(item["kind"]).strip()
-            if isinstance(item.get("description"), str) and str(item.get("description")).strip():
+            if (
+                isinstance(item.get("description"), str)
+                and str(item.get("description")).strip()
+            ):
                 file_item["description"] = str(item["description"]).strip()
             if isinstance(item.get("tags"), list):
-                tags = [str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()]
+                tags = [
+                    str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()
+                ]
                 if tags:
                     file_item["tags"] = tags
             if item.get("size") is not None:
@@ -19566,23 +23705,31 @@ def _render_file_html(file_item: dict[str, Any]) -> str:
     for key, label in (("kind", "Kind"), ("path", "Path")):
         value = file_item.get(key)
         if isinstance(value, str) and value.strip():
-            meta_parts.append(f"<p class=\"meta\">{label}: {html_escape(value.strip())}</p>")
+            meta_parts.append(
+                f'<p class="meta">{label}: {html_escape(value.strip())}</p>'
+            )
     size = file_item.get("size")
     if isinstance(size, int):
-        meta_parts.append(f"<p class=\"meta\">Size: {size}</p>")
+        meta_parts.append(f'<p class="meta">Size: {size}</p>')
     if meta_parts:
         meta_html = "\n    ".join(meta_parts)
     description = file_item.get("description")
     description_html = ""
     if isinstance(description, str) and description.strip():
-        description_html = f"<pre class=\"description\">{html_escape(description.strip())}</pre>"
+        description_html = (
+            f'<pre class="description">{html_escape(description.strip())}</pre>'
+        )
     tags = file_item.get("tags")
     tag_html = ""
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            tag_html = "<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>"
-    body_html = f"<pre class=\"file-body\">{body}</pre>" if body else "<pre class=\"file-body\"></pre>"
+            tag_html = '<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>"
+    body_html = (
+        f'<pre class="file-body">{body}</pre>'
+        if body
+        else '<pre class="file-body"></pre>'
+    )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -19613,7 +23760,9 @@ def _render_file_html(file_item: dict[str, Any]) -> str:
 """
 
 
-def _find_artifact(artifacts: list[dict[str, Any]], artifact_id: str) -> dict[str, Any] | None:
+def _find_artifact(
+    artifacts: list[dict[str, Any]], artifact_id: str
+) -> dict[str, Any] | None:
     for artifact in artifacts:
         if str(artifact.get("id")) == artifact_id:
             return artifact
@@ -19649,14 +23798,18 @@ def _render_artifact_html(artifact: dict[str, Any]) -> str:
     meta_html = ""
     kind = artifact.get("kind")
     if isinstance(kind, str) and kind.strip():
-        meta_html = f"<p class=\"meta\">Kind: {html_escape(kind.strip())}</p>"
+        meta_html = f'<p class="meta">Kind: {html_escape(kind.strip())}</p>'
     tags = artifact.get("tags")
     tag_html = ""
     if isinstance(tags, list):
         tag_values = [html_escape(str(tag)) for tag in tags if str(tag).strip()]
         if tag_values:
-            tag_html = "<p class=\"tags\">Tags: " + ", ".join(tag_values) + "</p>"
-    body_html = f"<pre class=\"artifact-body\">{body}</pre>" if body else "<pre class=\"artifact-body\"></pre>"
+            tag_html = '<p class="tags">Tags: ' + ", ".join(tag_values) + "</p>"
+    body_html = (
+        f'<pre class="artifact-body">{body}</pre>'
+        if body
+        else '<pre class="artifact-body"></pre>'
+    )
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -19726,7 +23879,13 @@ def command_files(args: argparse.Namespace) -> int:
         print(fmt.format("ID", "NAME", "KIND"))
         print("-" * 80)
         for item in files:
-            print(fmt.format(str(item.get("id", "")), str(item.get("name", ""))[:28], str(item.get("kind", ""))[:18]))
+            print(
+                fmt.format(
+                    str(item.get("id", "")),
+                    str(item.get("name", ""))[:28],
+                    str(item.get("kind", ""))[:18],
+                )
+            )
         return 0
 
     if args.action == "add":
@@ -19770,7 +23929,10 @@ def command_files(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "file"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
             existing[str(item.get("id"))] = item
         files[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
@@ -19781,7 +23943,9 @@ def command_files(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported files: {output}")
         return 0
     elif args.action == "share":
@@ -19898,11 +24062,19 @@ def render_agent_md(agent: dict[str, Any]) -> str:
     lines.append(f"- ID: {agent_id}")
     if base_model:
         lines.append(f"- Base model: {base_model}")
-    if isinstance(agent.get("visibility"), str) and str(agent.get("visibility")).strip():
+    if (
+        isinstance(agent.get("visibility"), str)
+        and str(agent.get("visibility")).strip()
+    ):
         lines.append(f"- Visibility: {str(agent['visibility']).strip()}")
-    if isinstance(agent.get("description"), str) and str(agent.get("description")).strip():
+    if (
+        isinstance(agent.get("description"), str)
+        and str(agent.get("description")).strip()
+    ):
         lines.extend(["", "## Description", str(agent["description"]).strip()])
-    system_prompt = agent.get("systemPrompt", agent.get("instructions", agent.get("prompt")))
+    system_prompt = agent.get(
+        "systemPrompt", agent.get("instructions", agent.get("prompt"))
+    )
     if isinstance(system_prompt, str) and system_prompt.strip():
         lines.extend(["", "## System Prompt", system_prompt.strip()])
     for key, heading in (
@@ -19916,7 +24088,9 @@ def render_agent_md(agent: dict[str, Any]) -> str:
             lines.extend(["", f"## {heading}", items])
     parameters = agent.get("parameters")
     if isinstance(parameters, dict) and parameters:
-        lines.extend(["", "## Parameters", json.dumps(parameters, indent=2, ensure_ascii=False)])
+        lines.extend(
+            ["", "## Parameters", json.dumps(parameters, indent=2, ensure_ascii=False)]
+        )
     avatar = agent.get("avatar")
     if isinstance(avatar, str) and avatar.strip():
         lines.extend(["", "## Avatar", avatar.strip()])
@@ -19932,29 +24106,46 @@ def render_agent_html(agent: dict[str, Any]) -> str:
     body_parts: list[str] = []
     base_model = agent.get("baseModel") or agent.get("model")
     if isinstance(base_model, str) and base_model.strip():
-        body_parts.append(f"<p class=\"meta\">Base model: {html_escape(base_model.strip())}</p>")
+        body_parts.append(
+            f'<p class="meta">Base model: {html_escape(base_model.strip())}</p>'
+        )
     visibility = agent.get("visibility")
     if isinstance(visibility, str) and visibility.strip():
-        body_parts.append(f"<p class=\"meta\">Visibility: {html_escape(visibility.strip())}</p>")
+        body_parts.append(
+            f'<p class="meta">Visibility: {html_escape(visibility.strip())}</p>'
+        )
     description = agent.get("description")
     if isinstance(description, str) and description.strip():
-        body_parts.append(f"<pre class=\"description\">{html_escape(description.strip())}</pre>")
-    system_prompt = agent.get("systemPrompt", agent.get("instructions", agent.get("prompt")))
+        body_parts.append(
+            f'<pre class="description">{html_escape(description.strip())}</pre>'
+        )
+    system_prompt = agent.get(
+        "systemPrompt", agent.get("instructions", agent.get("prompt"))
+    )
     if isinstance(system_prompt, str) and system_prompt.strip():
-        body_parts.append(f"<pre class=\"system-prompt\">{html_escape(system_prompt.strip())}</pre>")
-    for key, label in (("tools", "Tools"), ("knowledge", "Knowledge"), ("skills", "Skills"), ("tags", "Tags")):
+        body_parts.append(
+            f'<pre class="system-prompt">{html_escape(system_prompt.strip())}</pre>'
+        )
+    for key, label in (
+        ("tools", "Tools"),
+        ("knowledge", "Knowledge"),
+        ("skills", "Skills"),
+        ("tags", "Tags"),
+    ):
         items = _agent_value_list(agent, key)
         if items:
-            body_parts.append(f"<p class=\"tags\">{label}: {html_escape(items)}</p>")
+            body_parts.append(f'<p class="tags">{label}: {html_escape(items)}</p>')
     parameters = agent.get("parameters")
     if isinstance(parameters, dict) and parameters:
-        body_parts.append(f"<pre class=\"parameters\">{html_escape(json.dumps(parameters, indent=2, ensure_ascii=False))}</pre>")
+        body_parts.append(
+            f'<pre class="parameters">{html_escape(json.dumps(parameters, indent=2, ensure_ascii=False))}</pre>'
+        )
     avatar = agent.get("avatar")
     if isinstance(avatar, str) and avatar.strip():
-        body_parts.append(f"<p class=\"meta\">Avatar: {html_escape(avatar.strip())}</p>")
+        body_parts.append(f'<p class="meta">Avatar: {html_escape(avatar.strip())}</p>')
     voice = agent.get("voice")
     if isinstance(voice, str) and voice.strip():
-        body_parts.append(f"<p class=\"meta\">Voice: {html_escape(voice.strip())}</p>")
+        body_parts.append(f'<p class="meta">Voice: {html_escape(voice.strip())}</p>')
     return f"""<!doctype html>
 <html lang=\"en\">
 <head>
@@ -19977,7 +24168,7 @@ def render_agent_html(agent: dict[str, Any]) -> str:
   <article class=\"card\" data-agent-id=\"{agent_id}\">
     <h1>{title}</h1>
     <p class=\"meta\">Agent ID: {agent_id}</p>
-    {''.join(body_parts)}
+    {"".join(body_parts)}
   </article>
 </body>
 </html>
@@ -20096,13 +24287,24 @@ def command_agents(args: argparse.Namespace) -> int:
             if not isinstance(item.get("id"), str) or not str(item.get("id")).strip():
                 item = dict(item)
                 item["id"] = slugify(str(item.get("name") or "agent"))
-            if not isinstance(item.get("name"), str) or not str(item.get("name")).strip():
+            if (
+                not isinstance(item.get("name"), str)
+                or not str(item.get("name")).strip()
+            ):
                 item["name"] = str(item.get("id"))
-            if not isinstance(item.get("baseModel"), str) or not str(item.get("baseModel")).strip():
-                if isinstance(item.get("model"), str) and str(item.get("model")).strip():
+            if (
+                not isinstance(item.get("baseModel"), str)
+                or not str(item.get("baseModel")).strip()
+            ):
+                if (
+                    isinstance(item.get("model"), str)
+                    and str(item.get("model")).strip()
+                ):
                     item["baseModel"] = str(item.get("model")).strip()
             existing[str(item.get("id"))] = item
-        agents[:] = sorted(existing.values(), key=lambda x: str(x.get("id", "")).lower())
+        agents[:] = sorted(
+            existing.values(), key=lambda x: str(x.get("id", "")).lower()
+        )
     elif args.action == "export":
         output = pathlib.Path(args.output).expanduser()
         payload = {"agents": agents}
@@ -20110,7 +24312,9 @@ def command_agents(args: argparse.Namespace) -> int:
             json.dump(payload, sys.stdout, indent=2, ensure_ascii=False)
             print()
             return 0
-        output.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         print(f"Exported agents: {output}")
         return 0
     elif args.action == "share":
@@ -20205,7 +24409,16 @@ def _searchable_fields(item: dict[str, Any]) -> str:
         value = item.get(key)
         if isinstance(value, str) and value.strip():
             parts.append(value)
-    for key in ("tags", "sources", "tools", "knowledge", "skills", "events", "files", "images"):
+    for key in (
+        "tags",
+        "sources",
+        "tools",
+        "knowledge",
+        "skills",
+        "events",
+        "files",
+        "images",
+    ):
         value = item.get(key)
         if isinstance(value, list):
             parts.extend(str(x) for x in value if str(x).strip())
@@ -20265,7 +24478,9 @@ def command_search(args: argparse.Namespace) -> int:
                 for proto, models in payload.items():
                     if isinstance(models, list):
                         for model in models:
-                            if isinstance(model, dict) and term in _searchable_fields(model):
+                            if isinstance(model, dict) and term in _searchable_fields(
+                                model
+                            ):
                                 matches.append((f"{scope_name}.{proto}", model))
             continue
         if isinstance(payload, list):
@@ -20274,7 +24489,9 @@ def command_search(args: argparse.Namespace) -> int:
                     matches.append((scope_name, item))
 
     if args.kind:
-        matches = [m for m in matches if m[0] == args.kind or m[0].startswith(f"{args.kind}.")]
+        matches = [
+            m for m in matches if m[0] == args.kind or m[0].startswith(f"{args.kind}.")
+        ]
 
     if not matches:
         print("No matches found.")
@@ -20332,7 +24549,11 @@ def command_web_search(args: argparse.Namespace) -> int:
     print(fmt.format("#", "TITLE", "URL"))
     print("-" * 100)
     for idx, item in enumerate(results, start=1):
-        print(fmt.format(str(idx), str(item.get("title", ""))[:28], str(item.get("url", ""))[:52]))
+        print(
+            fmt.format(
+                str(idx), str(item.get("title", ""))[:28], str(item.get("url", ""))[:52]
+            )
+        )
 
     if not args.save_to_knowledge:
         return 0
@@ -20385,20 +24606,32 @@ def command_web_search(args: argparse.Namespace) -> int:
 
     output = pathlib.Path(args.output).expanduser()
     if output.suffix.lower() == ".json":
-        output.write_text(json.dumps(save_payload["knowledgeIndex"], indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        output.write_text(
+            json.dumps(save_payload["knowledgeIndex"], indent=2, ensure_ascii=False)
+            + "\n",
+            encoding="utf-8",
+        )
         print(f"Exported knowledge index: {output}")
     else:
         output.mkdir(parents=True, exist_ok=True)
         for doc in save_payload["knowledgeIndex"]["documents"]:
             doc_path = output / f"{doc['id']}.json"
-            doc_path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            doc_path.write_text(
+                json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
         manifest = output / "manifest.json"
-        manifest.write_text(json.dumps(save_payload["knowledgeIndex"], indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        manifest.write_text(
+            json.dumps(save_payload["knowledgeIndex"], indent=2, ensure_ascii=False)
+            + "\n",
+            encoding="utf-8",
+        )
         print(f"Exported knowledge index: {manifest}")
     saved_backup = backup(path)
     atomic_write_json(path, settings)
     print(f"Updated Qwen settings: {path}")
-    print(f"Knowledge index documents: {save_payload['knowledgeIndex']['documentCount']}")
+    print(
+        f"Knowledge index documents: {save_payload['knowledgeIndex']['documentCount']}"
+    )
     print(f"Knowledge index chunks: {save_payload['knowledgeIndex']['chunkCount']}")
     if repairs:
         for repair in repairs:
@@ -20535,7 +24768,9 @@ def command_install_coder(args: argparse.Namespace) -> int:
         die(f"Unsupported backend: {backend}")
 
     preset = PRESETS[provider]
-    base_url = normalize_url(os.environ.get(BASE_URL_HINT_ENV.get(provider, ""), preset.base_url))
+    base_url = normalize_url(
+        os.environ.get(BASE_URL_HINT_ENV.get(provider, ""), preset.base_url)
+    )
     env_key = preset.env_key
     api_key = os.environ.get(env_key, "")
 
@@ -20799,8 +25034,12 @@ def build_parser() -> argparse.ArgumentParser:
     skills_add.add_argument("--content", required=True)
     skills_add.add_argument("--description")
     skills_add.add_argument("--tag", action="append", default=[])
-    skills_add.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    skills_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    skills_add.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    skills_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     skills_add.set_defaults(func=command_skills, action="add")
 
     skills_remove = skills_sub.add_parser("remove", help="remove a skill")
@@ -20842,8 +25081,12 @@ def build_parser() -> argparse.ArgumentParser:
     skills_clone.add_argument("--content")
     skills_clone.add_argument("--description")
     skills_clone.add_argument("--tag", action="append", default=None)
-    skills_clone.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    skills_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    skills_clone.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    skills_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     skills_clone.set_defaults(func=command_skills, action="clone")
 
     skills_cmd.set_defaults(func=command_skills, action="list")
@@ -20872,8 +25115,12 @@ def build_parser() -> argparse.ArgumentParser:
     plugins_add.add_argument("--knowledge", action="append", default=[])
     plugins_add.add_argument("--skill", action="append", default=[])
     plugins_add.add_argument("--event", action="append", default=[])
-    plugins_add.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    plugins_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    plugins_add.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    plugins_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     plugins_add.set_defaults(func=command_plugins, action="add")
 
     plugins_remove = plugins_sub.add_parser("remove", help="remove a plugin")
@@ -20890,7 +25137,9 @@ def build_parser() -> argparse.ArgumentParser:
     plugins_import.add_argument("source")
     plugins_import.set_defaults(func=command_plugins, action="import")
 
-    plugins_export = plugins_sub.add_parser("export", help="export plugins to a JSON file")
+    plugins_export = plugins_sub.add_parser(
+        "export", help="export plugins to a JSON file"
+    )
     plugins_export.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     plugins_export.add_argument("--dry-run", action="store_true")
     plugins_export.add_argument("output")
@@ -20906,7 +25155,9 @@ def build_parser() -> argparse.ArgumentParser:
     plugins_share.add_argument("output")
     plugins_share.set_defaults(func=command_plugins, action="share")
 
-    plugins_clone = plugins_sub.add_parser("clone", help="clone a plugin into a new entry")
+    plugins_clone = plugins_sub.add_parser(
+        "clone", help="clone a plugin into a new entry"
+    )
     plugins_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     plugins_clone.add_argument("--dry-run", action="store_true")
     plugins_clone.add_argument("--id", required=True)
@@ -20920,8 +25171,12 @@ def build_parser() -> argparse.ArgumentParser:
     plugins_clone.add_argument("--knowledge", action="append", default=None)
     plugins_clone.add_argument("--skill", action="append", default=None)
     plugins_clone.add_argument("--event", action="append", default=None)
-    plugins_clone.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    plugins_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    plugins_clone.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    plugins_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     plugins_clone.set_defaults(func=command_plugins, action="clone")
 
     plugins_cmd.set_defaults(func=command_plugins, action="list")
@@ -20950,8 +25205,12 @@ def build_parser() -> argparse.ArgumentParser:
     pipelines_add.add_argument("--knowledge", action="append", default=[])
     pipelines_add.add_argument("--skill", action="append", default=[])
     pipelines_add.add_argument("--event", action="append", default=[])
-    pipelines_add.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    pipelines_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    pipelines_add.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    pipelines_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     pipelines_add.set_defaults(func=command_pipelines, action="add")
 
     pipelines_remove = pipelines_sub.add_parser("remove", help="remove a pipeline")
@@ -20982,11 +25241,15 @@ def build_parser() -> argparse.ArgumentParser:
     pipelines_share.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     pipelines_share.add_argument("--dry-run", action="store_true")
     pipelines_share.add_argument("--id", required=True)
-    pipelines_share.add_argument("--format", choices=("md", "json", "html"), default="md")
+    pipelines_share.add_argument(
+        "--format", choices=("md", "json", "html"), default="md"
+    )
     pipelines_share.add_argument("output")
     pipelines_share.set_defaults(func=command_pipelines, action="share")
 
-    pipelines_clone = pipelines_sub.add_parser("clone", help="clone a pipeline into a new entry")
+    pipelines_clone = pipelines_sub.add_parser(
+        "clone", help="clone a pipeline into a new entry"
+    )
     pipelines_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     pipelines_clone.add_argument("--dry-run", action="store_true")
     pipelines_clone.add_argument("--id", required=True)
@@ -21000,16 +25263,18 @@ def build_parser() -> argparse.ArgumentParser:
     pipelines_clone.add_argument("--knowledge", action="append", default=None)
     pipelines_clone.add_argument("--skill", action="append", default=None)
     pipelines_clone.add_argument("--event", action="append", default=None)
-    pipelines_clone.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    pipelines_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    pipelines_clone.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    pipelines_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     pipelines_clone.set_defaults(func=command_pipelines, action="clone")
 
     pipelines_cmd.set_defaults(func=command_pipelines, action="list")
     command_parsers["pipelines"] = pipelines_cmd
 
-    filters_cmd = sub.add_parser(
-        "filters", help="manage reusable filter manifests"
-    )
+    filters_cmd = sub.add_parser("filters", help="manage reusable filter manifests")
     filters_sub = filters_cmd.add_subparsers(dest="filters_command")
 
     filters_list = filters_sub.add_parser("list", help="list saved filters")
@@ -21030,8 +25295,12 @@ def build_parser() -> argparse.ArgumentParser:
     filters_add.add_argument("--knowledge", action="append", default=[])
     filters_add.add_argument("--skill", action="append", default=[])
     filters_add.add_argument("--event", action="append", default=[])
-    filters_add.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    filters_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    filters_add.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    filters_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     filters_add.set_defaults(func=command_filters, action="add")
 
     filters_remove = filters_sub.add_parser("remove", help="remove a filter")
@@ -21048,7 +25317,9 @@ def build_parser() -> argparse.ArgumentParser:
     filters_import.add_argument("source")
     filters_import.set_defaults(func=command_filters, action="import")
 
-    filters_export = filters_sub.add_parser("export", help="export filters to a JSON file")
+    filters_export = filters_sub.add_parser(
+        "export", help="export filters to a JSON file"
+    )
     filters_export.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     filters_export.add_argument("--dry-run", action="store_true")
     filters_export.add_argument("output")
@@ -21064,7 +25335,9 @@ def build_parser() -> argparse.ArgumentParser:
     filters_share.add_argument("output")
     filters_share.set_defaults(func=command_filters, action="share")
 
-    filters_clone = filters_sub.add_parser("clone", help="clone a filter into a new entry")
+    filters_clone = filters_sub.add_parser(
+        "clone", help="clone a filter into a new entry"
+    )
     filters_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     filters_clone.add_argument("--dry-run", action="store_true")
     filters_clone.add_argument("--id", required=True)
@@ -21078,16 +25351,18 @@ def build_parser() -> argparse.ArgumentParser:
     filters_clone.add_argument("--knowledge", action="append", default=None)
     filters_clone.add_argument("--skill", action="append", default=None)
     filters_clone.add_argument("--event", action="append", default=None)
-    filters_clone.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    filters_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    filters_clone.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    filters_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     filters_clone.set_defaults(func=command_filters, action="clone")
 
     filters_cmd.set_defaults(func=command_filters, action="list")
     command_parsers["filters"] = filters_cmd
 
-    actions_cmd = sub.add_parser(
-        "actions", help="manage reusable action manifests"
-    )
+    actions_cmd = sub.add_parser("actions", help="manage reusable action manifests")
     actions_sub = actions_cmd.add_subparsers(dest="actions_command")
 
     actions_list = actions_sub.add_parser("list", help="list saved actions")
@@ -21108,8 +25383,12 @@ def build_parser() -> argparse.ArgumentParser:
     actions_add.add_argument("--knowledge", action="append", default=[])
     actions_add.add_argument("--skill", action="append", default=[])
     actions_add.add_argument("--event", action="append", default=[])
-    actions_add.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    actions_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    actions_add.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    actions_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     actions_add.set_defaults(func=command_actions, action="add")
 
     actions_remove = actions_sub.add_parser("remove", help="remove an action")
@@ -21126,7 +25405,9 @@ def build_parser() -> argparse.ArgumentParser:
     actions_import.add_argument("source")
     actions_import.set_defaults(func=command_actions, action="import")
 
-    actions_export = actions_sub.add_parser("export", help="export actions to a JSON file")
+    actions_export = actions_sub.add_parser(
+        "export", help="export actions to a JSON file"
+    )
     actions_export.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     actions_export.add_argument("--dry-run", action="store_true")
     actions_export.add_argument("output")
@@ -21142,7 +25423,9 @@ def build_parser() -> argparse.ArgumentParser:
     actions_share.add_argument("output")
     actions_share.set_defaults(func=command_actions, action="share")
 
-    actions_clone = actions_sub.add_parser("clone", help="clone an action into a new entry")
+    actions_clone = actions_sub.add_parser(
+        "clone", help="clone an action into a new entry"
+    )
     actions_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     actions_clone.add_argument("--dry-run", action="store_true")
     actions_clone.add_argument("--id", required=True)
@@ -21156,8 +25439,12 @@ def build_parser() -> argparse.ArgumentParser:
     actions_clone.add_argument("--knowledge", action="append", default=None)
     actions_clone.add_argument("--skill", action="append", default=None)
     actions_clone.add_argument("--event", action="append", default=None)
-    actions_clone.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    actions_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    actions_clone.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    actions_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     actions_clone.set_defaults(func=command_actions, action="clone")
 
     actions_cmd.set_defaults(func=command_actions, action="list")
@@ -21173,7 +25460,9 @@ def build_parser() -> argparse.ArgumentParser:
     automations_list.add_argument("--dry-run", action="store_true")
     automations_list.set_defaults(func=command_automations, action="list")
 
-    automations_add = automations_sub.add_parser("add", help="add or replace an automation")
+    automations_add = automations_sub.add_parser(
+        "add", help="add or replace an automation"
+    )
     automations_add.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     automations_add.add_argument("--dry-run", action="store_true")
     automations_add.add_argument("--id")
@@ -21184,11 +25473,17 @@ def build_parser() -> argparse.ArgumentParser:
     automations_add.add_argument("--model")
     automations_add.add_argument("--description")
     automations_add.add_argument("--tag", action="append", default=[])
-    automations_add.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    automations_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    automations_add.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    automations_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     automations_add.set_defaults(func=command_automations, action="add")
 
-    automations_remove = automations_sub.add_parser("remove", help="remove an automation")
+    automations_remove = automations_sub.add_parser(
+        "remove", help="remove an automation"
+    )
     automations_remove.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     automations_remove.add_argument("--dry-run", action="store_true")
     automations_remove.add_argument("--id", required=True)
@@ -21216,7 +25511,9 @@ def build_parser() -> argparse.ArgumentParser:
     automations_share.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     automations_share.add_argument("--dry-run", action="store_true")
     automations_share.add_argument("--id", required=True)
-    automations_share.add_argument("--format", choices=("md", "json", "html"), default="md")
+    automations_share.add_argument(
+        "--format", choices=("md", "json", "html"), default="md"
+    )
     automations_share.add_argument("output")
     automations_share.set_defaults(func=command_automations, action="share")
 
@@ -21234,8 +25531,12 @@ def build_parser() -> argparse.ArgumentParser:
     automations_clone.add_argument("--model")
     automations_clone.add_argument("--description")
     automations_clone.add_argument("--tag", action="append", default=None)
-    automations_clone.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
-    automations_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    automations_clone.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
+    automations_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     automations_clone.set_defaults(func=command_automations, action="clone")
 
     automations_cmd.set_defaults(func=command_automations, action="list")
@@ -21261,7 +25562,9 @@ def build_parser() -> argparse.ArgumentParser:
     tools_add.add_argument("--description")
     tools_add.add_argument("--auth")
     tools_add.add_argument("--tag", action="append", default=[])
-    tools_add.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=True)
+    tools_add.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=True
+    )
     tools_add.set_defaults(func=command_tools, action="add")
 
     tools_remove = tools_sub.add_parser("remove", help="remove a tool server")
@@ -21286,7 +25589,9 @@ def build_parser() -> argparse.ArgumentParser:
     tools_export.add_argument("output")
     tools_export.set_defaults(func=command_tools, action="export")
 
-    tools_clone = tools_sub.add_parser("clone", help="clone a tool server into a new entry")
+    tools_clone = tools_sub.add_parser(
+        "clone", help="clone a tool server into a new entry"
+    )
     tools_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     tools_clone.add_argument("--dry-run", action="store_true")
     tools_clone.add_argument("--id", required=True)
@@ -21297,7 +25602,9 @@ def build_parser() -> argparse.ArgumentParser:
     tools_clone.add_argument("--description")
     tools_clone.add_argument("--auth")
     tools_clone.add_argument("--tag", action="append", default=None)
-    tools_clone.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
+    tools_clone.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
     tools_clone.set_defaults(func=command_tools, action="clone")
 
     tools_cmd.set_defaults(func=command_tools, action="list")
@@ -21321,7 +25628,9 @@ def build_parser() -> argparse.ArgumentParser:
     kb_add.add_argument("--source-dir")
     kb_add.add_argument("--description")
     kb_add.add_argument("--tag", action="append", default=[])
-    kb_add.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=True)
+    kb_add.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=True
+    )
     kb_add.add_argument("--sources", nargs="*")
     kb_add.set_defaults(func=command_kb, action="add")
 
@@ -21347,7 +25656,9 @@ def build_parser() -> argparse.ArgumentParser:
     kb_export.add_argument("output")
     kb_export.set_defaults(func=command_kb, action="export")
 
-    kb_clone = kb_sub.add_parser("clone", help="clone a knowledge base into a new entry")
+    kb_clone = kb_sub.add_parser(
+        "clone", help="clone a knowledge base into a new entry"
+    )
     kb_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     kb_clone.add_argument("--dry-run", action="store_true")
     kb_clone.add_argument("--id", required=True)
@@ -21356,7 +25667,9 @@ def build_parser() -> argparse.ArgumentParser:
     kb_clone.add_argument("--source-dir")
     kb_clone.add_argument("--description")
     kb_clone.add_argument("--tag", action="append", default=None)
-    kb_clone.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
+    kb_clone.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
     kb_clone.add_argument("--sources", nargs="*")
     kb_clone.set_defaults(func=command_kb, action="clone")
 
@@ -21390,7 +25703,8 @@ def build_parser() -> argparse.ArgumentParser:
     kb_ingest_url.set_defaults(func=command_kb, action="ingest-url")
 
     kb_refresh = kb_sub.add_parser(
-        "refresh", help="refresh an existing registered knowledge base from its saved source"
+        "refresh",
+        help="refresh an existing registered knowledge base from its saved source",
     )
     kb_refresh.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     kb_refresh.add_argument("--dry-run", action="store_true")
@@ -21402,7 +25716,8 @@ def build_parser() -> argparse.ArgumentParser:
     kb_refresh.set_defaults(func=command_kb, action="refresh")
 
     kb_sync = kb_sub.add_parser(
-        "sync", help="refresh every registered knowledge base and export rebuilt indexes"
+        "sync",
+        help="refresh every registered knowledge base and export rebuilt indexes",
     )
     kb_sync.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     kb_sync.add_argument("--dry-run", action="store_true")
@@ -21445,13 +25760,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     snapshot_sub = snapshot_cmd.add_subparsers(dest="snapshot_command")
 
-    snapshot_export = snapshot_sub.add_parser("export", help="export settings to a portable JSON snapshot")
+    snapshot_export = snapshot_sub.add_parser(
+        "export", help="export settings to a portable JSON snapshot"
+    )
     snapshot_export.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     snapshot_export.add_argument("--dry-run", action="store_true")
     snapshot_export.add_argument("output")
     snapshot_export.set_defaults(func=command_snapshot, action="export")
 
-    snapshot_import = snapshot_sub.add_parser("import", help="restore settings from a JSON snapshot")
+    snapshot_import = snapshot_sub.add_parser(
+        "import", help="restore settings from a JSON snapshot"
+    )
     snapshot_import.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     snapshot_import.add_argument("--dry-run", action="store_true")
     snapshot_import.add_argument("source")
@@ -21503,8 +25822,12 @@ def build_parser() -> argparse.ArgumentParser:
     notes_add.add_argument("--file", "--attachment", action="append", default=[])
     notes_add.add_argument("--image", action="append", default=[])
     notes_add.add_argument("--tag", action="append", default=[])
-    notes_add.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    notes_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    notes_add.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    notes_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     notes_add.set_defaults(func=command_notes, action="add")
 
     notes_remove = notes_sub.add_parser("remove", help="remove a note")
@@ -21527,7 +25850,9 @@ def build_parser() -> argparse.ArgumentParser:
     notes_export.add_argument("output")
     notes_export.set_defaults(func=command_notes, action="export")
 
-    notes_share = notes_sub.add_parser("share", help="export a note as markdown or html")
+    notes_share = notes_sub.add_parser(
+        "share", help="export a note as markdown or html"
+    )
     notes_share.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     notes_share.add_argument("--dry-run", action="store_true")
     notes_share.add_argument("--id", required=True)
@@ -21544,8 +25869,12 @@ def build_parser() -> argparse.ArgumentParser:
     notes_clone.add_argument("--file", "--attachment", action="append", default=None)
     notes_clone.add_argument("--image", action="append", default=None)
     notes_clone.add_argument("--tag", action="append", default=None)
-    notes_clone.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    notes_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    notes_clone.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    notes_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     notes_clone.set_defaults(func=command_notes, action="clone")
 
     notes_cmd.set_defaults(func=command_notes, action="list")
@@ -21572,8 +25901,12 @@ def build_parser() -> argparse.ArgumentParser:
     folders_add.add_argument("--description")
     folders_add.add_argument("--knowledge", action="append", default=[])
     folders_add.add_argument("--tag", action="append", default=[])
-    folders_add.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    folders_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    folders_add.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    folders_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     folders_add.add_argument("--unread-count", type=int)
     folders_add.set_defaults(func=command_folders, action="add")
 
@@ -21591,7 +25924,9 @@ def build_parser() -> argparse.ArgumentParser:
     folders_import.add_argument("source")
     folders_import.set_defaults(func=command_folders, action="import")
 
-    folders_export = folders_sub.add_parser("export", help="export folders to a JSON file")
+    folders_export = folders_sub.add_parser(
+        "export", help="export folders to a JSON file"
+    )
     folders_export.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     folders_export.add_argument("--dry-run", action="store_true")
     folders_export.add_argument("output")
@@ -21621,8 +25956,12 @@ def build_parser() -> argparse.ArgumentParser:
     folders_clone.add_argument("--description")
     folders_clone.add_argument("--knowledge", action="append", default=None)
     folders_clone.add_argument("--tag", action="append", default=None)
-    folders_clone.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    folders_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    folders_clone.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    folders_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     folders_clone.add_argument("--unread-count", type=int)
     folders_clone.set_defaults(func=command_folders, action="clone")
 
@@ -21648,8 +25987,12 @@ def build_parser() -> argparse.ArgumentParser:
     memories_add.add_argument("--scope", default="user")
     memories_add.add_argument("--source")
     memories_add.add_argument("--tag", action="append", default=[])
-    memories_add.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    memories_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    memories_add.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    memories_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     memories_add.set_defaults(func=command_memories, action="add")
 
     memories_remove = memories_sub.add_parser("remove", help="remove a memory")
@@ -21666,7 +26009,9 @@ def build_parser() -> argparse.ArgumentParser:
     memories_import.add_argument("source")
     memories_import.set_defaults(func=command_memories, action="import")
 
-    memories_export = memories_sub.add_parser("export", help="export memories to a JSON file")
+    memories_export = memories_sub.add_parser(
+        "export", help="export memories to a JSON file"
+    )
     memories_export.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     memories_export.add_argument("--dry-run", action="store_true")
     memories_export.add_argument("output")
@@ -21678,11 +26023,15 @@ def build_parser() -> argparse.ArgumentParser:
     memories_share.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     memories_share.add_argument("--dry-run", action="store_true")
     memories_share.add_argument("--id", required=True)
-    memories_share.add_argument("--format", choices=("md", "json", "html"), default="md")
+    memories_share.add_argument(
+        "--format", choices=("md", "json", "html"), default="md"
+    )
     memories_share.add_argument("output")
     memories_share.set_defaults(func=command_memories, action="share")
 
-    memories_clone = memories_sub.add_parser("clone", help="clone a memory into a new entry")
+    memories_clone = memories_sub.add_parser(
+        "clone", help="clone a memory into a new entry"
+    )
     memories_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     memories_clone.add_argument("--dry-run", action="store_true")
     memories_clone.add_argument("--id", required=True)
@@ -21692,8 +26041,12 @@ def build_parser() -> argparse.ArgumentParser:
     memories_clone.add_argument("--scope")
     memories_clone.add_argument("--source")
     memories_clone.add_argument("--tag", action="append", default=None)
-    memories_clone.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    memories_clone.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    memories_clone.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    memories_clone.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     memories_clone.set_defaults(func=command_memories, action="clone")
 
     memories_cmd.set_defaults(func=command_memories, action="list")
@@ -21720,8 +26073,12 @@ def build_parser() -> argparse.ArgumentParser:
     files_add.add_argument("--description")
     files_add.add_argument("--tag", action="append", default=[])
     files_add.add_argument("--size", type=int)
-    files_add.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    files_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    files_add.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    files_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     files_add.set_defaults(func=command_files, action="add")
 
     files_remove = files_sub.add_parser("remove", help="remove a file")
@@ -21754,7 +26111,9 @@ def build_parser() -> argparse.ArgumentParser:
     files_share.add_argument("output")
     files_share.set_defaults(func=command_files, action="share")
 
-    files_clone = files_sub.add_parser("clone", help="clone a file entry into a new item")
+    files_clone = files_sub.add_parser(
+        "clone", help="clone a file entry into a new item"
+    )
     files_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     files_clone.add_argument("--dry-run", action="store_true")
     files_clone.add_argument("--id", required=True)
@@ -21813,7 +26172,9 @@ def build_parser() -> argparse.ArgumentParser:
     artifacts_share.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     artifacts_share.add_argument("--dry-run", action="store_true")
     artifacts_share.add_argument("--id", required=True)
-    artifacts_share.add_argument("--format", choices=("md", "json", "html"), default="md")
+    artifacts_share.add_argument(
+        "--format", choices=("md", "json", "html"), default="md"
+    )
     artifacts_share.add_argument("output")
     artifacts_share.set_defaults(func=command_artifacts, action="share")
 
@@ -21854,13 +26215,19 @@ def build_parser() -> argparse.ArgumentParser:
     conversations_add.add_argument("--folder")
     conversations_add.add_argument("--system-prompt")
     conversations_add.add_argument("--knowledge", action="append", default=[])
-    conversations_add.add_argument("--file", "--attachment", action="append", default=[])
+    conversations_add.add_argument(
+        "--file", "--attachment", action="append", default=[]
+    )
     conversations_add.add_argument("--image", action="append", default=[])
     conversations_add.add_argument("--transcript")
     conversations_add.add_argument("--message", action="append", default=[])
     conversations_add.add_argument("--tag", action="append", default=[])
-    conversations_add.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    conversations_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    conversations_add.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    conversations_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     conversations_add.set_defaults(func=command_conversations, action="add")
 
     conversations_remove = conversations_sub.add_parser(
@@ -21933,8 +26300,12 @@ def build_parser() -> argparse.ArgumentParser:
     channels_add.add_argument("--transcript")
     channels_add.add_argument("--message", action="append", default=[])
     channels_add.add_argument("--tag", action="append", default=[])
-    channels_add.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    channels_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    channels_add.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    channels_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     channels_add.set_defaults(func=command_channels, action="add")
 
     channels_remove = channels_sub.add_parser("remove", help="remove a channel")
@@ -21951,7 +26322,9 @@ def build_parser() -> argparse.ArgumentParser:
     channels_import.add_argument("source")
     channels_import.set_defaults(func=command_channels, action="import")
 
-    channels_export = channels_sub.add_parser("export", help="export channels to a JSON file")
+    channels_export = channels_sub.add_parser(
+        "export", help="export channels to a JSON file"
+    )
     channels_export.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     channels_export.add_argument("--dry-run", action="store_true")
     channels_export.add_argument("output")
@@ -21963,7 +26336,9 @@ def build_parser() -> argparse.ArgumentParser:
     channels_share.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     channels_share.add_argument("--dry-run", action="store_true")
     channels_share.add_argument("--id", required=True)
-    channels_share.add_argument("--format", choices=("md", "json", "html"), default="md")
+    channels_share.add_argument(
+        "--format", choices=("md", "json", "html"), default="md"
+    )
     channels_share.add_argument("output")
     channels_share.set_defaults(func=command_channels, action="share")
 
@@ -21990,7 +26365,9 @@ def build_parser() -> argparse.ArgumentParser:
     webhooks_list.add_argument("--dry-run", action="store_true")
     webhooks_list.set_defaults(func=command_webhooks, action="list")
 
-    webhooks_add = webhooks_sub.add_parser("add", help="add or replace a webhook target")
+    webhooks_add = webhooks_sub.add_parser(
+        "add", help="add or replace a webhook target"
+    )
     webhooks_add.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     webhooks_add.add_argument("--dry-run", action="store_true")
     webhooks_add.add_argument("--id")
@@ -22000,7 +26377,9 @@ def build_parser() -> argparse.ArgumentParser:
     webhooks_add.add_argument("--description")
     webhooks_add.add_argument("--secret")
     webhooks_add.add_argument("--tag", action="append", default=[])
-    webhooks_add.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
+    webhooks_add.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
     webhooks_add.set_defaults(func=command_webhooks, action="add")
 
     webhooks_remove = webhooks_sub.add_parser("remove", help="remove a webhook target")
@@ -22017,7 +26396,9 @@ def build_parser() -> argparse.ArgumentParser:
     webhooks_import.add_argument("source")
     webhooks_import.set_defaults(func=command_webhooks, action="import")
 
-    webhooks_export = webhooks_sub.add_parser("export", help="export webhooks to a JSON file")
+    webhooks_export = webhooks_sub.add_parser(
+        "export", help="export webhooks to a JSON file"
+    )
     webhooks_export.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     webhooks_export.add_argument("--dry-run", action="store_true")
     webhooks_export.add_argument("output")
@@ -22029,11 +26410,15 @@ def build_parser() -> argparse.ArgumentParser:
     webhooks_share.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     webhooks_share.add_argument("--dry-run", action="store_true")
     webhooks_share.add_argument("--id", required=True)
-    webhooks_share.add_argument("--format", choices=("md", "json", "html"), default="md")
+    webhooks_share.add_argument(
+        "--format", choices=("md", "json", "html"), default="md"
+    )
     webhooks_share.add_argument("output")
     webhooks_share.set_defaults(func=command_webhooks, action="share")
 
-    webhooks_clone = webhooks_sub.add_parser("clone", help="clone a webhook target into a new entry")
+    webhooks_clone = webhooks_sub.add_parser(
+        "clone", help="clone a webhook target into a new entry"
+    )
     webhooks_clone.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     webhooks_clone.add_argument("--dry-run", action="store_true")
     webhooks_clone.add_argument("--id", required=True)
@@ -22044,7 +26429,9 @@ def build_parser() -> argparse.ArgumentParser:
     webhooks_clone.add_argument("--description")
     webhooks_clone.add_argument("--secret")
     webhooks_clone.add_argument("--tag", action="append", default=None)
-    webhooks_clone.add_argument("--enabled", action=argparse.BooleanOptionalAction, default=None)
+    webhooks_clone.add_argument(
+        "--enabled", action=argparse.BooleanOptionalAction, default=None
+    )
     webhooks_clone.set_defaults(func=command_webhooks, action="clone")
 
     webhooks_cmd.set_defaults(func=command_webhooks, action="list")
@@ -22076,8 +26463,12 @@ def build_parser() -> argparse.ArgumentParser:
     agents_add.add_argument("--knowledge", action="append", default=[])
     agents_add.add_argument("--skill", action="append", default=[])
     agents_add.add_argument("--param", action="append", default=[])
-    agents_add.add_argument("--pinned", action=argparse.BooleanOptionalAction, default=None)
-    agents_add.add_argument("--archived", action=argparse.BooleanOptionalAction, default=None)
+    agents_add.add_argument(
+        "--pinned", action=argparse.BooleanOptionalAction, default=None
+    )
+    agents_add.add_argument(
+        "--archived", action=argparse.BooleanOptionalAction, default=None
+    )
     agents_add.set_defaults(func=command_agents, action="add")
 
     agents_remove = agents_sub.add_parser("remove", help="remove an agent preset")
@@ -22124,10 +26515,13 @@ def build_parser() -> argparse.ArgumentParser:
     command_parsers["agents"] = agents_cmd
 
     search_cmd = sub.add_parser(
-        "search", help="search across prompts, skills, plugins, pipelines, filters, actions, automations, agents, conversations, folders, tools, knowledge, notes, memories, webhooks, and artifacts"
+        "search",
+        help="search across prompts, skills, plugins, pipelines, filters, actions, automations, agents, conversations, folders, tools, knowledge, notes, memories, webhooks, and artifacts",
     )
     search_cmd.add_argument("--settings", default=str(DEFAULT_SETTINGS))
-    search_cmd.add_argument("--kind", help="limit to a registry scope, like notes or artifacts")
+    search_cmd.add_argument(
+        "--kind", help="limit to a registry scope, like notes or artifacts"
+    )
     search_cmd.add_argument("query")
     search_cmd.set_defaults(func=command_search)
     command_parsers["search"] = search_cmd
@@ -22174,7 +26568,9 @@ def build_parser() -> argparse.ArgumentParser:
     prov.add_argument("--settings", default=str(DEFAULT_SETTINGS))
     prov.add_argument("--env-root", default=str(pathlib.Path.home()))
     prov.add_argument("--query", "-q", help="search filter for provider key/name/URL")
-    prov.add_argument("--free", action="store_true", help="sync free models instead of placeholders")
+    prov.add_argument(
+        "--free", action="store_true", help="sync free models instead of placeholders"
+    )
     prov.add_argument(
         "--auto-fallback",
         action="store_true",
